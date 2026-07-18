@@ -77,6 +77,8 @@ class Traits(commands.Cog):
 
         level_labels = ["Üye", "Kıdemli", "Uzman"]
         for idx, selected in enumerate(results):
+            if not selected:
+                continue
             cat = selected.get('category', 'Unknown')
             name = selected.get('name', 'Unknown')
             url = selected.get('url', '')
@@ -157,18 +159,18 @@ class Traits(commands.Cog):
 
         if not args:
             hint_message = (
-                f"❌ You must specify at least 3 different categories.\n"
-                f"**Usage:** `!trait combat social magic`  or  `!trait race(human) combat social`\n"
-                f"**Available Categories:** `{cat_list}`"
+                f"❌ En az 3 farklı kategori belirtmelisiniz.\n"
+                f"**Kullanım:** `!trait combat social magic` veya `!trait race(human) combat family mount`\n"
+                f"**Mevcut Kategoriler:** `{cat_list}`"
             )
             await ctx.send(hint_message)
             return
 
         if wants_race_trait and not race:
             hint_message = (
-                f"❌ You must specify a race when requesting a Race trait.\n"
-                f"**Usage:** `!trait race(human) combat social`\n"
-                f"**Available Categories:** `{cat_list}`"
+                f"❌ Bir Race (Irk) traiti seçerken ırk belirtmelisiniz.\n"
+                f"**Kullanım:** `!trait race(human) combat social`\n"
+                f"**Mevcut Kategoriler:** `{cat_list}`"
             )
             await ctx.send(hint_message)
             return
@@ -185,9 +187,9 @@ class Traits(commands.Cog):
                 
         if len(unique_selections) < 3:
             hint_message = (
-                f"❌ You must specify at least 3 different categories.\n"
-                f"**Usage:** `!trait combat social magic`  or  `!trait race(human) combat social`\n"
-                f"**Available Categories:** `{cat_list}`"
+                f"❌ En az 3 farklı kategori belirtmelisiniz.\n"
+                f"**Kullanım:** `!trait combat social magic` veya `!trait race(human) combat family mount`\n"
+                f"**Mevcut Kategoriler:** `{cat_list}`"
             )
             await ctx.send(hint_message)
             return
@@ -228,8 +230,8 @@ class Traits(commands.Cog):
 
         if not any(results):
             await ctx.send(
-                f"❌ No traits found for category(s) `{', '.join(errors)}` with race `{race}`.\n"
-                f"**Available Categories:** `{cat_list}`"
+                f"❌ `{', '.join(errors)}` kategorileri ve `{race}` ırkı için uygun trait bulunamadı.\n"
+                f"**Mevcut Kategoriler:** `{cat_list}`"
             )
             return
 

@@ -1284,7 +1284,7 @@
         {
             "name": "Zealot (Gnome)",
             "url": "https://www.d20pfsrd.com/traits/faith-traits/zealot/",
-            "category": "Faith",
+            "category": "Race",
             "req_race": "Any",
             "req_class": "Any"
         },
@@ -1389,7 +1389,7 @@
         {
             "name": "Charlatan (Gnome)",
             "url": "https://www.d20pfsrd.com/traits/magic-traits/charlatan-gnome-magic/",
-            "category": "Magic",
+            "category": "Race",
             "req_race": "Any",
             "req_class": "Any"
         },
@@ -1802,7 +1802,7 @@
         {
             "name": "Naturally Gifted (Gnome)",
             "url": "https://www.d20pfsrd.com/traits/magic-traits/naturally-gifted-gnome-magic/",
-            "category": "Magic",
+            "category": "Race",
             "req_race": "Any",
             "req_class": "Any"
         },
@@ -1991,7 +1991,7 @@
         {
             "name": "Trickster (Gnome)",
             "url": "https://www.d20pfsrd.com/traits/magic-traits/trickster-gnome-magic/",
-            "category": "Magic",
+            "category": "Race",
             "req_race": "Any",
             "req_class": "Any"
         },
@@ -2215,7 +2215,7 @@
         {
             "name": "Collector (Gnome)",
             "url": "https://www.d20pfsrd.com/traits/social-traits/collector-gnome-social/",
-            "category": "Social",
+            "category": "Race",
             "req_race": "Any",
             "req_class": "Any"
         },
@@ -2348,7 +2348,7 @@
         {
             "name": "Etymologist (Gnome)",
             "url": "https://www.d20pfsrd.com/traits/social-traits/etymologist-gnome-social/",
-            "category": "Social",
+            "category": "Race",
             "req_race": "Any",
             "req_class": "Any"
         },
@@ -2362,7 +2362,7 @@
         {
             "name": "Explorer (Gnome)",
             "url": "https://www.d20pfsrd.com/traits/social-traits/explorer-gnome-social/",
-            "category": "Social",
+            "category": "Race",
             "req_race": "Any",
             "req_class": "Any"
         },
@@ -2432,7 +2432,7 @@
         {
             "name": "Gnomish Alchemist",
             "url": "https://www.d20pfsrd.com/traits/social-traits/businessman-gnome-social/",
-            "category": "Social",
+            "category": "Race",
             "req_race": "Any",
             "req_class": "Any"
         },
@@ -9335,6 +9335,90 @@
             "name": "Well-Provisioned Adventurer",
             "url": "https://www.d20pfsrd.com/traits/equipment-traits/well-provisioned-adventurer-equipment/",
             "category": "Equipment",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Betrayal of Trust (Family)",
+            "url": "https://www.d20pfsrd.com/traits/family-traits/betrayal-of-trust-family/",
+            "category": "Family",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Blood Resonance (Family)",
+            "url": "https://www.d20pfsrd.com/traits/family-traits/blood-resonance-family/",
+            "category": "Family",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Family Resemblance (Family)",
+            "url": "https://www.d20pfsrd.com/traits/family-traits/family-resemblance-family/",
+            "category": "Family",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Family Trade (Family)",
+            "url": "https://www.d20pfsrd.com/traits/family-traits/family-trade-family/",
+            "category": "Family",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Honor-Bound (Family)",
+            "url": "https://www.d20pfsrd.com/traits/family-traits/honor-bound-family/",
+            "category": "Family",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Rivalry (Family)",
+            "url": "https://www.d20pfsrd.com/traits/family-traits/rivalry-family/",
+            "category": "Family",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Tight Bonds (Family)",
+            "url": "https://www.d20pfsrd.com/traits/family-traits/tight-bonds-family/",
+            "category": "Family",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Clever Mount",
+            "url": "https://www.d20pfsrd.com/traits/mount-traits/clever-mount/",
+            "category": "Mount",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "High Mountain Goat",
+            "url": "https://www.d20pfsrd.com/traits/mount-traits/high-mountain-goat/",
+            "category": "Mount",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Lucky Hound",
+            "url": "https://www.d20pfsrd.com/traits/mount-traits/lucky-hound/",
+            "category": "Mount",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Trade Camel",
+            "url": "https://www.d20pfsrd.com/traits/mount-traits/trade-camel/",
+            "category": "Mount",
+            "req_race": "Any",
+            "req_class": "Any"
+        },
+        {
+            "name": "Warthog",
+            "url": "https://www.d20pfsrd.com/traits/mount-traits/warthog/",
+            "category": "Mount",
             "req_race": "Any",
             "req_class": "Any"
         }
