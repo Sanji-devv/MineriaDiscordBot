@@ -1,8 +1,9 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import csv
 import io
 import aiohttp
+import time
 from typing import Tuple, List, Dict, Any
 from pathlib import Path
 import os
@@ -13,43 +14,59 @@ load_dotenv(Path(__file__).parent / ".env")
 XP_SHEET_URL = os.getenv("XP_SHEET_URL")
 
 class OneTimeCommands(commands.Cog):
-    """XP table queries and duplicate player detection."""
+    """XP table queries and duplicate player detection with high-performance caching."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self._cache_data: List[Dict[str, Any]] = []
+        self._cache_skipped: int = 0
+        self._cache_timestamp: float = 0
+        self._cache_ttl: float = 300  # 5 minutes cache TTL
+        self.auto_refresh_xp.start()
 
-    async def fetch_xp_data(self) -> Tuple[List[Dict[str, Any]], int]:
+    def cog_unload(self):
+        self.auto_refresh_xp.cancel()
+
+    @tasks.loop(minutes=5)
+    async def auto_refresh_xp(self):
+        """Background task to keep XP sheet cache fresh."""
+        if XP_SHEET_URL:
+            await self.fetch_xp_data(force_refresh=True)
+
+    @auto_refresh_xp.before_loop
+    async def before_auto_refresh(self):
+        await self.bot.wait_until_ready()
+
+    async def fetch_xp_data(self, force_refresh: bool = False) -> Tuple[List[Dict[str, Any]], int]:
         """
-        Fetches and parses the XP Google Sheet data.
+        Fetches and parses the XP Google Sheet data with in-memory TTL caching.
 
         Returns:
             Tuple: (List of character dicts, Count of skipped/invalid rows)
-
-        Sheet columns assumed:
-          B (1) = Character Name
-          C (2) = Player Name
-          D (3) = XP
-          E (4) = Rank
         """
+        now = time.time()
+        if not force_refresh and self._cache_data and (now - self._cache_timestamp < self._cache_ttl):
+            return self._cache_data, self._cache_skipped
+
         if not XP_SHEET_URL:
             logger.error("XP_SHEET_URL environment variable is not set.")
-            return [], 0
+            return self._cache_data, self._cache_skipped
             
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(XP_SHEET_URL) as resp:
                     if resp.status != 200:
                         logger.error(f"Failed to fetch XP sheet: HTTP Status {resp.status}")
-                        return [], 0
+                        return self._cache_data, self._cache_skipped
                     content = await resp.text()
         except Exception as e:
             logger.error(f"Exception while fetching XP data: {e}")
-            return [], 0
+            return self._cache_data, self._cache_skipped
 
         reader = csv.reader(io.StringIO(content))
         rows = list(reader)
         if not rows:
-            return [], 0
+            return self._cache_data, self._cache_skipped
 
         skipped_count = 0
         parsed = []
@@ -75,64 +92,113 @@ class OneTimeCommands(commands.Cog):
                 "rank":        rank,
             })
 
-        return parsed, skipped_count
+        self._cache_data = parsed
+        self._cache_skipped = skipped_count
+        self._cache_timestamp = now
+        return self._cache_data, self._cache_skipped
 
     @commands.command(name="d", aliases=["dup", "checkdup"])
-    async def duplicate_check_command(self, ctx: commands.Context):
+    async def duplicate_check_command(self, ctx: commands.Context, *args):
         """
         Scans the Google Sheet for players violating character limit rules.
 
-        Rules:
-        - A player can have at most 2 characters.
-        - If they have 2, one MUST be a Clerk and the other Ranked.
-        - 2 Ranked, 2 Clerks, or 3+ characters is a violation.
-        - Inactive characters are ignored.
+        Usage: !d [refresh]
         """
-        msg = await ctx.send("🔄 Fetching XP table data...")
-        data, skipped = await self.fetch_xp_data()
+        force_refresh = any(arg.lower() in ("refresh", "reload", "r") for arg in args)
+        
+        msg = None
+        # Send fetching indicator only if cache is cold or forced refresh
+        if force_refresh or not self._cache_data or (time.time() - self._cache_timestamp >= self._cache_ttl):
+            msg = await ctx.send("🔄 Fetching XP table data...")
+
+        data, skipped = await self.fetch_xp_data(force_refresh=force_refresh)
         if not data and skipped == 0:
-            await msg.edit(content="❌ Error: Failed to fetch XP table data or sheet is empty. Please check logs.")
+            err_msg = "❌ Error: Failed to fetch XP table data or sheet is empty. Please check logs."
+            if msg:
+                await msg.edit(content=err_msg)
+            else:
+                await ctx.send(err_msg)
             return
 
         active_chars = []
         inactive_count = 0
-        inactive_keywords = ["inactive", "dead", "left", "leave"]
+        inactive_keywords = [
+            "inactive", "inaktif", "in-aktif",
+            "dead", "ölü", "olu",
+            "left", "leave", "ayrıldı", "ayrildi",
+            "pasif", "ex", "emekli"
+        ]
 
         for entry in data:
-            rank_str = entry["rank"].lower()
+            rank_str = entry.get("rank", "").lower()
             if any(k in rank_str for k in inactive_keywords):
                 inactive_count += 1
             else:
                 active_chars.append(entry)
 
-        players: Dict[str, list] = {}
+
+        # Case-insensitive player grouping to prevent capitalization bypass
+        players: Dict[str, Tuple[str, list]] = {}  # normalized_name -> (display_name, char_entries)
         for entry in active_chars:
-            p = entry["player_name"]
-            if p not in players:
-                players[p] = []
-            players[p].append(entry)
+            raw_p = entry["player_name"].strip()
+            norm_p = raw_p.lower()
+            if norm_p not in players:
+                players[norm_p] = (raw_p, [])
+            players[norm_p][1].append(entry)
 
-        violations: Dict[str, list] = {}
+        violations: Dict[str, Tuple[str, list, str]] = {}  # norm_p -> (display_name, chars, reason)
 
-        for player, chars in players.items():
+        for norm_p, (display_name, chars) in players.items():
             if len(chars) <= 1:
                 continue
 
-            clerk_count  = 0
-            ranked_count = 0
+            if len(chars) >= 3:
+                reason = f"🚨 **3+ Character Violation** ({len(chars)} active characters)"
+                violations[norm_p] = (display_name, chars, reason)
+            elif len(chars) == 2:
+                c1_rank = chars[0].get('rank', '').lower()
+                c2_rank = chars[1].get('rank', '').lower()
 
-            for c in chars:
-                r_lower = c['rank'].lower()
-                if "clerk" in r_lower:
-                    clerk_count += 1
-                else:
-                    ranked_count += 1
+                c1_is_clerk = "clerk" in c1_rank
+                c2_is_clerk = "clerk" in c2_rank
 
-            is_valid_duo = (len(chars) == 2 and ranked_count == 1 and clerk_count == 1)
-            if not is_valid_duo:
-                violations[player] = chars
+                clerk_count = (1 if c1_is_clerk else 0) + (1 if c2_is_clerk else 0)
 
-        await msg.delete()
+                # Helper to check if a non-clerk rank is Senior (Kıdemli), Expert (Uzman), or Wanderer (Gezgin)
+                def is_qualified_ranked(r_str):
+                    return any(k in r_str for k in ["kıdemli", "kidemli", "uzman", "gezgin", "senior", "expert", "wanderer"])
+
+                if clerk_count == 2:
+                    reason = "🚨 **2 Clerk Character Violation**"
+                    violations[norm_p] = (display_name, chars, reason)
+                elif clerk_count == 0:
+                    if any(k in c1_rank for k in ["aday", "candidate"]) and any(k in c2_rank for k in ["aday", "candidate"]):
+                        reason = "🚨 **2 Candidate Character Violation**"
+                    else:
+                        reason = "🚨 **2 Ranked Character Violation** (Missing Clerk character)"
+                    violations[norm_p] = (display_name, chars, reason)
+                elif clerk_count == 1:
+                    # Exactly one is clerk, find the other character
+                    other_rank = c2_rank if c1_is_clerk else c1_rank
+                    
+                    if is_qualified_ranked(other_rank):
+                        # VALID COMBO! (Senior + Clerk, Expert + Clerk, OR Wanderer + Clerk)
+                        pass
+                    elif any(k in other_rank for k in ["aday", "candidate"]):
+                        reason = "🚨 **Candidate + Clerk Violation** (Only Senior/Expert/Wanderer + Clerk allowed)"
+                        violations[norm_p] = (display_name, chars, reason)
+                    elif any(k in other_rank for k in ["üye", "uye", "member"]):
+                        reason = "🚨 **Member + Clerk Violation** (Only Senior/Expert/Wanderer + Clerk allowed)"
+                        violations[norm_p] = (display_name, chars, reason)
+                    else:
+                        reason = "🚨 **Invalid Duo Violation** (Only Senior/Expert/Wanderer + Clerk allowed)"
+                        violations[norm_p] = (display_name, chars, reason)
+
+        if msg:
+            try:
+                await msg.delete()
+            except Exception:
+                pass
 
         has_violations = bool(violations)
         embed = discord.Embed(
@@ -166,24 +232,42 @@ class OneTimeCommands(commands.Cog):
 
         embed.add_field(
             name="📜 Allowed Rule",
-            value="Max **1 Ranked** + **1 Clerk** per player",
+            value="Max **1 Ranked** (Senior / Expert / Wanderer) + **1 Clerk** per player",
             inline=False
         )
 
         if has_violations:
             embed.add_field(name="\u200b", value="─" * 30, inline=False)
-            for player, chars in violations.items():
+            items_added = 0
+            for norm_p, (display_name, chars, reason) in violations.items():
+                if items_added >= 15:
+                    embed.add_field(
+                        name="⚠️ Other Violations",
+                        value=f"*...and {len(violations) - items_added} more player(s) in violation.*",
+                        inline=False
+                    )
+                    break
+
                 char_lines = []
                 for c in chars:
-                    r_lower  = c['rank'].lower()
+                    r_lower  = c.get('rank', '').lower()
                     is_clerk = "clerk" in r_lower
                     role_tag = "🟡 Clerk" if is_clerk else "🔴 Ranked"
-                    char_lines.append(f"{role_tag} **{c['char_name']}** — *{c['rank']}*")
+                    char_name = c.get('char_name', 'Unknown')
+                    rank_name = c.get('rank', 'Unknown')
+                    char_lines.append(f"{role_tag} **{char_name}** — *{rank_name}*")
+                
+                val_text = f"**Reason:** {reason}\n" + "\n".join(char_lines)
+                if len(val_text) > 1000:
+                    val_text = val_text[:990] + "\n*...*"
+
                 embed.add_field(
-                    name=f"🚧 {player} ({len(chars)} characters)",
-                    value="\n".join(char_lines),
+                    name=f"🚧 {display_name} ({len(chars)} Characters)",
+                    value=val_text,
                     inline=False
                 )
+                items_added += 1
+
         else:
             embed.add_field(
                 name="✅ Result",
@@ -194,5 +278,8 @@ class OneTimeCommands(commands.Cog):
         embed.set_footer(text="Mineria RPG • Rule Enforcement", icon_url=self.bot.user.display_avatar.url)
         await ctx.send(embed=embed)
 
+
+
+
 async def setup(bot: commands.Bot):
-    await bot.add_cog(OneTimeCommands(bot))
+    await bot.add_cog(OneTimeCommands(bot))

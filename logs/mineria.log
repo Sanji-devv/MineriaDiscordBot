@@ -1,0 +1,115 @@
+2026-07-30 08:38:54 - INFO - Using Production Token
+2026-07-30 08:39:15 - CRITICAL - ❌ Unexpected error during startup: Cannot connect to host discord.com:443 ssl:default [Semafor zaman aşımı süresi geçildi]
+Traceback (most recent call last):
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohttp\connector.py", line 1301, in _wrap_create_connection
+    sock = await aiohappyeyeballs.start_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohappyeyeballs\impl.py", line 124, in start_connection
+    raise first_exception
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohappyeyeballs\impl.py", line 75, in start_connection
+    sock = await _connect_sock(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohappyeyeballs\impl.py", line 210, in _connect_sock
+    await loop.sock_connect(sock, address)
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\asyncio\proactor_events.py", line 728, in sock_connect
+    return await self._proactor.connect(sock, address)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\asyncio\windows_events.py", line 807, in _poll
+    value = callback(transferred, key, ov)
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\asyncio\windows_events.py", line 600, in finish_connect
+    ov.getresult()
+    ~~~~~~~~~~~~^^
+OSError: [WinError 121] Semafor zaman aşımı süresi geçildi
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "c:\Users\erdem\OneDrive\Desktop\PROJELER\Mineria-dc-bot\main.py", line 60, in <module>
+    bot.run(TOKEN)
+    ~~~~~~~^^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\discord\client.py", line 933, in run
+    asyncio.run(runner())
+    ~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\asyncio\runners.py", line 205, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\asyncio\runners.py", line 128, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\asyncio\base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\discord\client.py", line 922, in runner
+    await self.start(token, reconnect=reconnect)
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\discord\client.py", line 850, in start
+    await self.login(token)
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\discord\client.py", line 679, in login
+    data = await self.http.static_login(token)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\discord\http.py", line 844, in static_login
+    data = await self.request(Route('GET', '/users/@me'))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\discord\http.py", line 659, in request
+    async with self.__session.request(method, url, **kwargs) as response:
+               ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohttp\client.py", line 1683, in __aenter__
+    self._resp: _RetType_co = await self._coro
+                              ^^^^^^^^^^^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohttp\client.py", line 856, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohttp\client.py", line 810, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohttp\connector.py", line 657, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohttp\connector.py", line 1242, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohttp\connector.py", line 1620, in _create_direct_connection
+    raise last_exc
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohttp\connector.py", line 1589, in _create_direct_connection
+    transp, proto = await self._wrap_create_connection(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\erdem\AppData\Local\Programs\Python\Python314\Lib\site-packages\aiohttp\connector.py", line 1324, in _wrap_create_connection
+    raise client_error(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host discord.com:443 ssl:default [Semafor zaman aşımı süresi geçildi]
+2026-07-30 08:39:41 - INFO - Using Production Token
+2026-07-30 08:39:42 - INFO - Loaded 12 extensions: dice, help, log_handler, links, traits, drawbacks, documents, utility, error_handler, admin, character, new_character
+2026-07-30 08:39:45 - INFO - test bots is online! servers: 1
+2026-07-30 08:39:59 - INFO - ✅ EXEC | User: judai1903 (388683129658933259) | Cmd: !D | Guild: Unknown Lands
+2026-07-30 08:40:14 - INFO - ✅ EXEC | User: judai1903 (388683129658933259) | Cmd: !xp Thoma QuickFire | Guild: Unknown Lands
+2026-07-30 08:43:10 - INFO - ✅ EXEC | User: judai1903 (388683129658933259) | Cmd: !map | Guild: Unknown Lands
+2026-07-30 08:43:22 - INFO - ✅ EXEC | User: judai1903 (388683129658933259) | Cmd: !map feldan | Guild: Unknown Lands
+2026-07-30 08:44:44 - INFO - Using Production Token
+2026-07-30 08:44:45 - INFO - Loaded 12 extensions: dice, help, log_handler, links, traits, drawbacks, documents, utility, error_handler, admin, character, new_character
+2026-07-30 08:44:48 - INFO - test bots is online! servers: 1
+2026-07-30 08:44:57 - INFO - ✅ EXEC | User: judai1903 (388683129658933259) | Cmd: !xp Thoma QuickFire | Guild: Unknown Lands
+2026-07-30 08:50:28 - INFO - ✅ EXEC | User: judai1903 (388683129658933259) | Cmd: !m | Guild: Unknown Lands
+2026-07-30 08:55:05 - INFO - Using Production Token
+2026-07-30 08:55:06 - INFO - Loaded 12 extensions: dice, help, log_handler, links, traits, drawbacks, documents, utility, error_handler, admin, character, new_character
+2026-07-30 08:55:09 - INFO - test bots is online! servers: 1
+2026-07-30 08:55:10 - INFO - ✅ EXEC | User: judai1903 (388683129658933259) | Cmd: !d | Guild: Unknown Lands
+2026-07-30 08:55:51 - INFO - Using Production Token
+2026-07-30 08:55:52 - INFO - Loaded 12 extensions: dice, help, log_handler, links, traits, drawbacks, documents, utility, error_handler, admin, character, new_character
+2026-07-30 08:55:55 - INFO - test bots is online! servers: 1
+2026-07-30 08:55:57 - INFO - ✅ EXEC | User: judai1903 (388683129658933259) | Cmd: !d | Guild: Unknown Lands
+2026-07-30 08:56:44 - INFO - Using Production Token
+2026-07-30 08:56:45 - INFO - Loaded 12 extensions: dice, help, log_handler, links, traits, drawbacks, documents, utility, error_handler, admin, character, new_character
+2026-07-30 08:56:48 - INFO - test bots is online! servers: 1
+2026-07-30 08:56:49 - INFO - ✅ EXEC | User: judai1903 (388683129658933259) | Cmd: !d | Guild: Unknown Lands
+2026-07-30 09:01:14 - INFO - ✅ EXEC | User: judai1903 (388683129658933259) | Cmd: !char create human | Guild: Unknown Lands

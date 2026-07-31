@@ -67,7 +67,6 @@ class Traits(commands.Cog):
         return None
 
     def _build_trait_embed(self, results, race, errors=None):
-        """Helper to build the traits embed."""
         race_desc = f" for race **{race.capitalize()}**" if race else ""
         embed = discord.Embed(
             title="🎲 Random Traits",
@@ -106,15 +105,13 @@ class Traits(commands.Cog):
 
     @commands.group(name="trait", aliases=["t"], invoke_without_command=True)
     async def trait(self, ctx, *args: str):
-        """Displays a random trait for each specified category.
-        Race specification is only needed if 'Race' category is requested.
-        Usage: !trait combat social  OR  !trait race(human) combat social
-        """
+        """Displays a random trait for each specified category."""
         traits = self.traits.copy()
 
         if not traits:
             await ctx.send("❌ Trait list not found.")
             return
+
 
         # --- Parse arguments and build selection order ---
         selection_order = []  # List of tuples: ('category', cat_name) or ('race', race_name)
@@ -159,18 +156,18 @@ class Traits(commands.Cog):
 
         if not args:
             hint_message = (
-                f"❌ En az 3 farklı kategori belirtmelisiniz.\n"
-                f"**Kullanım:** `!trait combat social magic` veya `!trait race(human) combat family mount`\n"
-                f"**Mevcut Kategoriler:** `{cat_list}`"
+                f"❌ You must specify at least 3 different categories.\n"
+                f"**Usage:** `!trait combat social magic` or `!trait race(human) combat family mount`\n"
+                f"**Available Categories:** `{cat_list}`"
             )
             await ctx.send(hint_message)
             return
 
         if wants_race_trait and not race:
             hint_message = (
-                f"❌ Bir Race (Irk) traiti seçerken ırk belirtmelisiniz.\n"
-                f"**Kullanım:** `!trait race(human) combat social`\n"
-                f"**Mevcut Kategoriler:** `{cat_list}`"
+                f"❌ When selecting a Race trait, you must specify the race.\n"
+                f"**Usage:** `!trait race(human) combat social`\n"
+                f"**Available Categories:** `{cat_list}`"
             )
             await ctx.send(hint_message)
             return
@@ -187,9 +184,9 @@ class Traits(commands.Cog):
                 
         if len(unique_selections) < 3:
             hint_message = (
-                f"❌ En az 3 farklı kategori belirtmelisiniz.\n"
-                f"**Kullanım:** `!trait combat social magic` veya `!trait race(human) combat family mount`\n"
-                f"**Mevcut Kategoriler:** `{cat_list}`"
+                f"❌ You must specify at least 3 different categories.\n"
+                f"**Usage:** `!trait combat social magic` or `!trait race(human) combat family mount`\n"
+                f"**Available Categories:** `{cat_list}`"
             )
             await ctx.send(hint_message)
             return
@@ -230,8 +227,8 @@ class Traits(commands.Cog):
 
         if not any(results):
             await ctx.send(
-                f"❌ `{', '.join(errors)}` kategorileri ve `{race}` ırkı için uygun trait bulunamadı.\n"
-                f"**Mevcut Kategoriler:** `{cat_list}`"
+                f"❌ No suitable trait found for categories `{', '.join(errors)}` and race `{race}`.\n"
+                f"**Available Categories:** `{cat_list}`"
             )
             return
 
@@ -269,8 +266,8 @@ class Traits(commands.Cog):
             except discord.Forbidden:
                 pass
             await ctx.send(
-                f"❌ **{ctx.author.mention}**, aktif veya süresi geçmemiş bir trait seçiminiz bulunamadı. "
-                f"Önce `!trait <kategoriler>` komutu ile trait roll yapmalısınız (15 dakika geçerlidir).",
+                f"❌ **{ctx.author.mention}**, no active or non-expired trait selection found. "
+                f"Please use `!trait <categories>` first (valid for 15 minutes).",
                 delete_after=10
             )
             return
@@ -288,8 +285,8 @@ class Traits(commands.Cog):
             except discord.Forbidden:
                 pass
             await ctx.send(
-                f"❌ **{ctx.author.mention}**, lütfen yenilemek istediğiniz sırayı (1, 2, 3), "
-                f"kategorileri veya 'all' belirtin. Örnek: `!trait reroll 1 2` ya da `!trait reroll combat social`",
+                f"❌ **{ctx.author.mention}**, please specify index numbers (1, 2, 3), "
+                f"category names, or 'all'. Example: `!trait reroll 1 2` or `!trait reroll combat social`",
                 delete_after=10
             )
             return
@@ -330,7 +327,7 @@ class Traits(commands.Cog):
             except discord.Forbidden:
                 pass
             await ctx.send(
-                f"❌ **{ctx.author.mention}**, geçersiz veya bulunamayan kategoriler/numaralar: "
+                f"❌ **{ctx.author.mention}**, invalid or not found categories/numbers: "
                 f"`{', '.join(invalid_targets)}`.",
                 delete_after=10
             )
@@ -353,7 +350,7 @@ class Traits(commands.Cog):
             except discord.Forbidden:
                 pass
             await ctx.send(
-                f"❌ **{ctx.author.mention}**, belirtilen kategoriler için yenilenebilecek başka uygun trait bulunamadı.",
+                f"❌ **{ctx.author.mention}**, no other suitable traits available to reroll for specified categories.",
                 delete_after=10
             )
             return
@@ -382,10 +379,9 @@ class Traits(commands.Cog):
                 await ctx.message.delete()
             except discord.Forbidden:
                 pass
-            await ctx.send("❌ Orijinal trait mesajı bulunamadı. Lütfen yeni bir `!trait` komutu yazın.", delete_after=10)
+            await ctx.send("❌ Original trait message not found. Please issue a new `!trait` command.", delete_after=10)
             return
 
-        # Update cache and refresh time
         self.last_rolls[user_id]["results"] = results
         self.last_rolls[user_id]["time"] = time.time()
         
@@ -396,4 +392,3 @@ class Traits(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Traits(bot))
-

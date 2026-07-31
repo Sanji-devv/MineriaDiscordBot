@@ -124,7 +124,7 @@ async def handle_info(cog, ctx, *, name: str = None):
              embed.add_field(name="📊 Stats History", value=char_data["stat_history"], inline=False)
 
         # 2. Stats (Physical / Mental columns)
-        stats = char_data.get("stats", {})
+        stats = char_data.get("stats") or {}
 
         def fmt_stat(label, key, emoji):
             val = stats.get(key, 10)
@@ -140,23 +140,25 @@ async def handle_info(cog, ctx, *, name: str = None):
 
         
         # Feat Display
-        feats = char_data.get("feats", {})
+        feats = char_data.get("feats") or {}
         if feats:
             feat_lines = []
             for slot, feat in feats.items():
-                short_slot = slot.replace("Level", "Lvl").replace("Bonus Feat", "Bonus")
+                short_slot = str(slot).replace("Level", "Lvl").replace("Bonus Feat", "Bonus")
                 feat_lines.append(f"• **{short_slot}**: {feat}")
             
             feats_text = "\n".join(feat_lines)
             if len(feats_text) > 1000: feats_text = feats_text[:990] + "..."
             embed.add_field(name="⚔️ Known Feats", value=feats_text, inline=False)
 
-        created_at = char_data.get("created_at", "").split(" ")[0]
+        created_at_raw = str(char_data.get("created_at") or "")
+        created_at = created_at_raw.split(" ")[0] if created_at_raw else "N/A"
         footer_text = f"Mineria RPG • Created: {created_at}"
         embed.set_footer(text=footer_text, icon_url=ctx.bot.user.display_avatar.url)
         embed.set_thumbnail(url=ctx.author.display_avatar.url)
             
         await ctx.send(embed=embed)
+
 
 
 async def handle_list_chars(cog, ctx):

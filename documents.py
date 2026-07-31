@@ -2,6 +2,9 @@ import discord
 from discord.ext import commands
 from pathlib import Path
 import difflib
+import asyncio
+import time
+from typing import List, Tuple
 
 
 class Documents(commands.Cog):
@@ -12,18 +15,55 @@ class Documents(commands.Cog):
         self.docs_dir.mkdir(parents=True, exist_ok=True)
         self.maps_dir.mkdir(parents=True, exist_ok=True)
 
+        self._docs_cache: Tuple[float, List[Tuple[Path, float]]] = (0, [])
+        self._maps_cache: Tuple[float, List[Path]] = (0, [])
+        self._cache_ttl = 60  # Cache directory listings for 60 seconds
+
+    async def _get_docs(self) -> List[Tuple[Path, float]]:
+        """Returns cached (file_path, size_mb) list."""
+        now = time.time()
+        if self._docs_cache[1] and (now - self._docs_cache[0] < self._cache_ttl):
+            return self._docs_cache[1]
+
+        def _scan():
+            files = [f for f in self.docs_dir.iterdir() if f.is_file()]
+            res = []
+            for f in sorted(files, key=lambda x: x.name.lower()):
+                try:
+                    size_mb = f.stat().st_size / (1024 * 1024)
+                except Exception:
+                    size_mb = 0.0
+                res.append((f, size_mb))
+            return res
+
+        docs = await asyncio.to_thread(_scan)
+        self._docs_cache = (now, docs)
+        return docs
+
+    async def _get_maps(self) -> List[Path]:
+        """Returns cached map Path list."""
+        now = time.time()
+        if self._maps_cache[1] and (now - self._maps_cache[0] < self._cache_ttl):
+            return self._maps_cache[1]
+
+        def _scan():
+            files = [f for f in self.maps_dir.iterdir() if f.is_file()]
+            return sorted(files, key=lambda x: x.stem.lower())
+
+        maps = await asyncio.to_thread(_scan)
+        self._maps_cache = (now, maps)
+        return maps
+
     # ─────────────────────────────────────────────
     #  !doc  –  list or download a document
     # ─────────────────────────────────────────────
     @commands.group(name="doc", invoke_without_command=True)
     async def doc_command(self, ctx, *, query: str = None):
         """Lists all downloadable files, or downloads one by name."""
-        # Bare `!doc` or `!doc list` → show list
         if not query or query.lower().strip() == "list":
             await self._list_docs(ctx)
             return
 
-        # Otherwise treat query as a filename to download
         await self._send_doc(ctx, query)
 
     @doc_command.command(name="list")
@@ -32,8 +72,8 @@ class Documents(commands.Cog):
         await self._list_docs(ctx)
 
     async def _list_docs(self, ctx):
-        files = [f for f in self.docs_dir.iterdir() if f.is_file()]
-        if not files:
+        doc_entries = await self._get_docs()
+        if not doc_entries:
             await ctx.send("📂 The `mineria_files/docs/` directory is currently empty.")
             return
 
@@ -42,10 +82,7 @@ class Documents(commands.Cog):
             description="Use `!doc <name>` to download a file.",
             color=discord.Color.gold()
         )
-        file_list = []
-        for f in sorted(files, key=lambda x: x.name.lower()):
-            size_mb = f.stat().st_size / (1024 * 1024)
-            file_list.append(f"📄 **{f.name}** ({size_mb:.2f} MB)")
+        file_list = [f"📄 **{f.name}** ({size:.2f} MB)" for f, size in doc_entries]
             
         value_text = ""
         for idx, item in enumerate(file_list):
@@ -54,16 +91,17 @@ class Documents(commands.Cog):
                 break
             value_text += ("\n" if value_text else "") + item
 
-        embed.add_field(name=f"Files ({len(files)})", value=value_text or "No files.", inline=False)
+        embed.add_field(name=f"Files ({len(doc_entries)})", value=value_text or "No files.", inline=False)
         embed.set_footer(text="Mineria RPG • Documents", icon_url=self.bot.user.display_avatar.url)
         await ctx.send(embed=embed)
 
     async def _send_doc(self, ctx, query: str):
-        files = [f for f in self.docs_dir.iterdir() if f.is_file()]
-        if not files:
+        doc_entries = await self._get_docs()
+        if not doc_entries:
             await ctx.send("📂 The `mineria_files/docs/` directory is currently empty.")
             return
 
+        files = [f for f, _ in doc_entries]
         base_dir = self.docs_dir.resolve()
         try:
             target_file = (self.docs_dir / query).resolve()
@@ -77,7 +115,7 @@ class Documents(commands.Cog):
 
         if not target_file.exists():
             file_names = [f.name for f in files]
-            matches = difflib.get_close_matches(query, file_names, n=1, cutoff=0.5)
+            matches = await asyncio.to_thread(difflib.get_close_matches, query, file_names, 1, 0.5)
             if matches:
                 target_file = self.docs_dir / matches[0]
             else:
@@ -111,7 +149,7 @@ class Documents(commands.Cog):
         await self._list_maps(ctx)
 
     async def _list_maps(self, ctx):
-        maps = [f for f in self.maps_dir.iterdir() if f.is_file()]
+        maps = await self._get_maps()
         if not maps:
             await ctx.send("🗺️ The `mineria_files/maps/` directory is currently empty.")
             return
@@ -121,7 +159,7 @@ class Documents(commands.Cog):
             description="Use `!map <name>` to display a map.",
             color=discord.Color.blue()
         )
-        map_list = [f"🖼️ **{f.stem}**" for f in sorted(maps, key=lambda x: x.stem.lower())]
+        map_list = [f"🖼️ **{f.stem}**" for f in maps]
         
         value_text = ""
         for idx, item in enumerate(map_list):
@@ -136,7 +174,7 @@ class Documents(commands.Cog):
 
     async def _send_map(self, ctx, name: str):
         """Find and send a map image by name (fuzzy match)."""
-        maps = [f for f in self.maps_dir.iterdir() if f.is_file()]
+        maps = await self._get_maps()
         if not maps:
             await ctx.send("🗺️ No maps found in `mineria_files/maps/`.")
             return
@@ -145,7 +183,7 @@ class Documents(commands.Cog):
 
         if not match:
             stems = [f.stem for f in maps]
-            fuzzy = difflib.get_close_matches(name, stems, n=1, cutoff=0.4)
+            fuzzy = await asyncio.to_thread(difflib.get_close_matches, name, stems, 1, 0.4)
             if fuzzy:
                 match = next(f for f in maps if f.stem == fuzzy[0])
             else:
@@ -165,3 +203,4 @@ class Documents(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Documents(bot))
+

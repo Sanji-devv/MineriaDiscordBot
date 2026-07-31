@@ -15,12 +15,11 @@ PREFIXES = ["!mineria ", "!m ", "!"]
 if TOKEN:
     logger.info("Using Production Token")
 else:
-    logger.warning("⚠️ No DISCORD_TOKEN found in environment variables")
+    logger.warning("No DISCORD_TOKEN found in environment variables")
 
 class MineriaBot(commands.AutoShardedBot):
     def __init__(self, command_prefix):
         intents = discord.Intents.default()
-        # NOTE: intents.members = True requires enabling Server Members Intent in the Discord Developer Portal
         intents.message_content = intents.members = True
         super().__init__(
             command_prefix=command_prefix,

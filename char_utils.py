@@ -13,31 +13,42 @@ logger = logging.getLogger("MineriaBot")
 # CONSTANTS & PATHS
 # =================================================================================================
 
+import copy
+import time
+
 DATA_DIR = Path(__file__).parent / "datas"
+_JSON_CACHE: Dict[str, Tuple[float, Any]] = {}
 
 # =================================================================================================
 # HELPER FUNCTIONS
 # =================================================================================================
 
-async def load_json(filename: str) -> Union[Dict, List, Any]:
-    """Loads JSON data from the data directory safely."""
+async def load_json(filename: str, force_reload: bool = False) -> Union[Dict, List, Any]:
+    """Loads JSON data with in-memory caching for instant access."""
+    if not force_reload and filename in _JSON_CACHE:
+        return copy.deepcopy(_JSON_CACHE[filename][1])
+
     path = DATA_DIR / filename
     if not path.exists():
         return {}
     try:
         async with aiofiles.open(path, "r", encoding="utf-8") as f:
             content = await f.read()
-        return json.loads(content)
+        data = json.loads(content)
+        _JSON_CACHE[filename] = (time.time(), copy.deepcopy(data))
+        return data
     except (json.JSONDecodeError, IOError) as e:
         logger.error(f"❌ Failed to load JSON file '{filename}': {e}")
         raise
 
 async def save_json(filename: str, data: Any) -> None:
-    """Saves data to a JSON file in the data directory."""
+    """Saves data to a JSON file and updates the in-memory cache."""
     path = DATA_DIR / filename
     path.parent.mkdir(parents=True, exist_ok=True)
+    _JSON_CACHE[filename] = (time.time(), copy.deepcopy(data))
     async with aiofiles.open(path, "w", encoding="utf-8") as f:
         await f.write(json.dumps(data, indent=4))
+
 
 def roll_stat_detailed(num_dice: int) -> Tuple[List[int], List[int]]:
     """Rolls N d6 and returns (all_rolls, top_3)."""

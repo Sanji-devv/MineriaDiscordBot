@@ -77,11 +77,11 @@ class KiaCog(commands.Cog, name="KIA"):
                 headers = next(reader, None) # Skip headers
                 
                 char_found = False
-                l_xp = 0.0
-                ijk_xp = 0.0
+                full_xp = 0.0  # Columns K (10), L (11), M (12) -> 100% full value
+                task_xp = 0.0  # Columns I (8), J (9) -> Multiplied by 0.5 (KIA) or 0.9 (MIA)
 
                 for row in reader:
-                    if len(row) < 12: # Column L is index 11
+                    if len(row) < 12:
                         continue
                         
                     # Column B (index 1) is Name
@@ -89,14 +89,21 @@ class KiaCog(commands.Cog, name="KIA"):
                     if row_name.lower() == char_name.lower():
                         char_found = True
                         
-                        if 11 < len(row) and row[11].strip():
-                            try: l_xp = float(row[11].strip().replace(",", ""))
-                            except ValueError: pass
-                            
-                        for idx in [8, 9, 10]:
+                        # Full XP: K (10), L (11), M (12)
+                        for idx in [10, 11, 12]:
                             if idx < len(row) and row[idx].strip():
-                                try: ijk_xp += float(row[idx].strip().replace(",", ""))
-                                except ValueError: pass
+                                try:
+                                    full_xp += float(row[idx].strip().replace(",", ""))
+                                except ValueError:
+                                    pass
+                                    
+                        # Task XP: I (8), J (9)
+                        for idx in [8, 9]:
+                            if idx < len(row) and row[idx].strip():
+                                try:
+                                    task_xp += float(row[idx].strip().replace(",", ""))
+                                except ValueError:
+                                    pass
 
                         break # Character found, exit loop
 
@@ -112,8 +119,12 @@ class KiaCog(commands.Cog, name="KIA"):
                 )
                 
                 if is_xp_cmd:
-                    level, xp_needed, next_level = self.get_level_info(l_xp)
-                    embed.add_field(name="Current Base XP (L Column)", value=f"**{l_xp:,.0f} XP**", inline=False)
+                    current_total = full_xp + task_xp
+                    level, xp_needed, next_level = self.get_level_info(current_total)
+                    embed.add_field(name="Current Total XP", value=f"**{current_total:,.0f} XP**", inline=False)
+                    embed.add_field(name="• Fixed XP (K, L, M)", value=f"{full_xp:,.0f} XP", inline=True)
+                    embed.add_field(name="• Task XP (I, J)", value=f"{task_xp:,.0f} XP", inline=True)
+                    embed.add_field(name="\u200b", value="\u200b", inline=True)
                     
                     embed.add_field(name="🎖️ Current Level", value=f"**Level {level}**", inline=True)
                     if level < 20:
@@ -121,26 +132,26 @@ class KiaCog(commands.Cog, name="KIA"):
                     else:
                         embed.add_field(name="📈 Next Level", value="Maximum Level Reached", inline=True)
                         
-                    kia_pred = l_xp + (ijk_xp * 0.5)
-                    mia_pred = l_xp + (ijk_xp * 0.9)
+                    kia_pred = full_xp + (task_xp * 0.5)
+                    mia_pred = full_xp + (task_xp * 0.9)
                     
                     k_lvl, _, _ = self.get_level_info(kia_pred)
                     m_lvl, _, _ = self.get_level_info(mia_pred)
                     
                     embed.add_field(name="────────── New Character Predictions ──────────", value="\u200b", inline=False)
                     
-                    kia_details = f"**Base XP:** {l_xp:,.0f}\n**Added XP:** {(ijk_xp*0.5):,.0f} *(50% of {ijk_xp:,.0f})*\n**Total XP:** {kia_pred:,.0f}\n**Starts at:** Level {k_lvl}"
-                    mia_details = f"**Base XP:** {l_xp:,.0f}\n**Added XP:** {(ijk_xp*0.9):,.0f} *(90% of {ijk_xp:,.0f})*\n**Total XP:** {mia_pred:,.0f}\n**Starts at:** Level {m_lvl}"
+                    kia_details = f"**Fixed XP (K+L+M):** {full_xp:,.0f}\n**Added XP:** {(task_xp*0.5):,.0f} *(50% of {task_xp:,.0f})*\n**Total XP:** {kia_pred:,.0f}\n**Starts at:** Level {k_lvl}"
+                    mia_details = f"**Fixed XP (K+L+M):** {full_xp:,.0f}\n**Added XP:** {(task_xp*0.9):,.0f} *(90% of {task_xp:,.0f})*\n**Total XP:** {mia_pred:,.0f}\n**Starts at:** Level {m_lvl}"
                     
                     embed.add_field(name="💀 If KIA", value=kia_details, inline=True)
                     embed.add_field(name="🕵️ If MIA", value=mia_details, inline=True)
                 else:
-                    final_xp = l_xp + (ijk_xp * multiplier)
+                    final_xp = full_xp + (task_xp * multiplier)
                     level, xp_needed, next_level = self.get_level_info(final_xp)
                     pct = int(multiplier * 100)
                     
-                    embed.add_field(name="Base XP (L Column)", value=f"{l_xp:,.0f} XP", inline=True)
-                    embed.add_field(name=f"Added XP ({pct}%)", value=f"{(ijk_xp * multiplier):,.0f} XP\n*(from {ijk_xp:,.0f} Task XP)*", inline=True)
+                    embed.add_field(name="Fixed XP (K, L, M)", value=f"{full_xp:,.0f} XP", inline=True)
+                    embed.add_field(name=f"Added XP ({pct}%)", value=f"{(task_xp * multiplier):,.0f} XP\n*(from {task_xp:,.0f} Task XP)*", inline=True)
                     embed.add_field(name="\u200b", value="\u200b", inline=True) # Spacer
                     
                     embed.add_field(name="Total Calculated XP", value=f"**{final_xp:,.0f} XP**", inline=False)
@@ -162,23 +173,24 @@ class KiaCog(commands.Cog, name="KIA"):
     @commands.command(name="kia")
     async def kia_command(self, ctx: commands.Context, *, char_name: str):
         """
-        Calculates dead character's XP with a 0.5 multiplier.
+        Calculates dead character's XP: (K+L+M) + (0.5 * (I+J)).
         """
         await self.fetch_and_calculate_xp(ctx, char_name, 0.5, "💀 KIA XP Calculation", discord.Color.dark_red())
 
     @commands.command(name="mia")
     async def mia_command(self, ctx: commands.Context, *, char_name: str):
         """
-        Calculates missing character's XP with a 0.9 multiplier.
+        Calculates missing character's XP: (K+L+M) + (0.9 * (I+J)).
         """
         await self.fetch_and_calculate_xp(ctx, char_name, 0.9, "🕵️ MIA XP Calculation", discord.Color.gold())
 
     @commands.command(name="xp")
     async def xp_command(self, ctx: commands.Context, *, char_name: str):
         """
-        Shows current Base XP (column L) and predicts starting XP if KIA/MIA.
+        Shows current XP (K+L+M + I+J) and predicts starting XP if KIA/MIA.
         """
         await self.fetch_and_calculate_xp(ctx, char_name, 1.0, "✨ Current XP Status", discord.Color.blue(), is_xp_cmd=True)
 
 async def setup(bot):
     await bot.add_cog(KiaCog(bot))
+
