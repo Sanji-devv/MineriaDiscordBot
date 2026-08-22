@@ -1,17 +1,15 @@
 import discord
 from discord.ext import commands, tasks
 import shutil
-import os
 import asyncio
-from datetime import datetime, time, timedelta
-import logging
+from datetime import datetime, timedelta
 from pathlib import Path
-
-logger = logging.getLogger("MineriaBot")
+from log_handler import logger
 
 class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self._last_backup_day = None
         self.presence_task.start()
         self.backup_schedule.start()
 
@@ -31,7 +29,7 @@ class Admin(commands.Cog):
             activity = discord.Game(name="!m and !roll")
             await self.bot.change_presence(status=discord.Status.online, activity=activity)
         except Exception as e:
-            print(f"Failed to update presence: {e}")
+            logger.warning(f"Failed to update presence: {e}")
 
     @presence_task.before_loop
     async def before_presence_task(self):
@@ -57,9 +55,11 @@ class Admin(commands.Cog):
     async def backup_schedule(self):
         """Checks every minute to trigger scheduled backups at 08:00."""
         now = datetime.now()
+        today_key = (now.year, now.month, now.day)
         
-        # Schedule: 08:00 AM
-        if now.hour == 8 and now.minute == 0:
+        # Schedule: 08:00 AM once per day
+        if now.hour == 8 and now.minute == 0 and self._last_backup_day != today_key:
+            self._last_backup_day = today_key
             # Daily Backup
             await self.perform_backup("daily", retention=7)
             
@@ -86,7 +86,7 @@ class Admin(commands.Cog):
     @commands.command(name="backup", hidden=True)
     @commands.is_owner()
     async def manual_backup(self, ctx):
-        """Triggers a immediate manual backup to the daily folder."""
+        """Triggers an immediate manual backup to the daily folder."""
         await ctx.send("⏳ Starting manual backup...")
         try:
             filename = await self.perform_backup("daily", retention=7)
@@ -103,12 +103,12 @@ class Admin(commands.Cog):
         backup_type: 'daily' or 'weekly'
         retention: number of files to keep
         """
-        # Detect data directory (Root 'datas' or 'data')
-        data_dir = Path("datas")
+        base_dir = Path(__file__).parent
+        data_dir = base_dir / "datas"
         if not data_dir.exists():
-             data_dir = Path("data")
+            data_dir = base_dir / "data"
              
-        backup_root = Path("backups")
+        backup_root = base_dir / "backups"
         target_dir = backup_root / backup_type
         
         if not data_dir.exists():
@@ -116,23 +116,16 @@ class Admin(commands.Cog):
             return None
 
         target_dir.mkdir(parents=True, exist_ok=True)
-        
         now = datetime.now()
         
         if backup_type == "daily":
-            # Format: friday_23_01_2026
             filename = now.strftime("%A_%d_%m_%Y").lower()
-            
         elif backup_type == "weekly":
-            # Format: 19-25_december (Mon-Sun range)
             start_date = now - timedelta(days=now.weekday()) # Monday
             end_date = start_date + timedelta(days=6)        # Sunday
-            
-            # Use end_date's month name? User example 'december'.
             month_name = end_date.strftime("%B").lower()
             filename = f"{start_date.day}-{end_date.day}_{month_name}"
         else:
-            # Fallback
             timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
             filename = f"mineria_{backup_type}_{timestamp}"
 
@@ -148,8 +141,8 @@ class Admin(commands.Cog):
             await asyncio.to_thread(self.prune_backups, target_dir, retention)
             return final_filename
         except Exception as e:
-             logger.error(f"❌ {backup_type.capitalize()} backup failed: {e}")
-             return None
+            logger.error(f"❌ {backup_type.capitalize()} backup failed: {e}")
+            return None
 
 async def setup(bot):
     await bot.add_cog(Admin(bot))

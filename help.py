@@ -11,8 +11,6 @@ class HelpCog(commands.Cog, name="Help"):
     @commands.command(name="help", aliases=["m", "mineria", "h"])
     async def help_command(self, ctx: commands.Context):
         """Displays the modern and clean help menu."""
-        bot_avatar = ctx.bot.user.display_avatar.url
-
         embed = discord.Embed(
             title="✨ Mineria System Terminal",
             description=(
@@ -47,8 +45,7 @@ class HelpCog(commands.Cog, name="Help"):
                 "> **`!char list`** ➔ Lists all your registered characters.\n"
                 "> **`!char info [name]`** ➔ Displays the detailed character sheet.\n"
                 "> **`!char edit` / `rename` / `delete`** ➔ Character management operations.\n"
-                "> **`!xp <name>`** ➔ Checks current XP and level of your character.\n"
-                "> **`!kia`** & **`!mia`** ➔ Calculates current XP in case of death or missing-in-action."
+                "> **`!kia <name>`** & **`!mia <name>`** ➔ Calculates starting XP for new character (Death/Missing)."
             ),
             inline=False,
         )

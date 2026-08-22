@@ -46,7 +46,11 @@ async def handle_create(cog, ctx, race_name: str = None):
 
         embed.add_field(name="👉 Next Step", value=f"Distribute using `!char dr`.\nEx: `!char dr {example_cmd}`", inline=False)
         embed.set_thumbnail(url=ctx.author.display_avatar.url)
-        embed.set_footer(text="Mineria RPG • Creation Mode", icon_url=cog.bot.user.display_avatar.url)
+        avatar_url = cog.bot.user.display_avatar.url if (cog.bot.user and cog.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Creation Mode", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Creation Mode")
         
         await ctx.send(embed=embed)
 
@@ -280,7 +284,11 @@ async def handle_save_char(cog, ctx, *, name: str = None):
             description=f"**{name}** ({creation['race_name']}) has been created!",
             color=discord.Color.green()
         )
-        embed.set_footer(text="Mineria RPG • Saved", icon_url=cog.bot.user.display_avatar.url)
+        avatar_url = cog.bot.user.display_avatar.url if (cog.bot.user and cog.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Saved", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Saved")
         await ctx.send(embed=embed)
 
     # ==========================

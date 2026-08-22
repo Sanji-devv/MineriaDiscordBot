@@ -4,17 +4,14 @@ import json
 import aiofiles
 import random
 import statistics
-import logging
 from pathlib import Path
-
-logger = logging.getLogger("MineriaBot")
+import copy
+import time
+from log_handler import logger
 
 # =================================================================================================
 # CONSTANTS & PATHS
 # =================================================================================================
-
-import copy
-import time
 
 DATA_DIR = Path(__file__).parent / "datas"
 _JSON_CACHE: Dict[str, Tuple[float, Any]] = {}

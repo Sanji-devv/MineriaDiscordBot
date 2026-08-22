@@ -10,8 +10,9 @@ from typing import List, Tuple
 class Documents(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.docs_dir = Path("mineria_files/docs")
-        self.maps_dir = Path("mineria_files/maps")
+        base_dir = Path(__file__).parent
+        self.docs_dir = base_dir / "mineria_files" / "docs"
+        self.maps_dir = base_dir / "mineria_files" / "maps"
         self.docs_dir.mkdir(parents=True, exist_ok=True)
         self.maps_dir.mkdir(parents=True, exist_ok=True)
 
@@ -92,7 +93,11 @@ class Documents(commands.Cog):
             value_text += ("\n" if value_text else "") + item
 
         embed.add_field(name=f"Files ({len(doc_entries)})", value=value_text or "No files.", inline=False)
-        embed.set_footer(text="Mineria RPG • Documents", icon_url=self.bot.user.display_avatar.url)
+        avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Documents", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Documents")
         await ctx.send(embed=embed)
 
     async def _send_doc(self, ctx, query: str):
@@ -169,7 +174,11 @@ class Documents(commands.Cog):
             value_text += ("\n" if value_text else "") + item
 
         embed.add_field(name=f"Maps ({len(maps)})", value=value_text or "No maps.", inline=False)
-        embed.set_footer(text="Mineria RPG • Maps", icon_url=self.bot.user.display_avatar.url)
+        avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Maps", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Maps")
         await ctx.send(embed=embed)
 
     async def _send_map(self, ctx, name: str):
@@ -203,4 +212,5 @@ class Documents(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Documents(bot))
+
 

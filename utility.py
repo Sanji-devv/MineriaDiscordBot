@@ -4,7 +4,7 @@ import csv
 import io
 import aiohttp
 import time
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Optional
 from pathlib import Path
 import os
 from dotenv import load_dotenv
@@ -13,19 +13,38 @@ from log_handler import logger
 load_dotenv(Path(__file__).parent / ".env")
 XP_SHEET_URL = os.getenv("XP_SHEET_URL")
 
+INACTIVE_KEYWORDS = (
+    "inactive", "inaktif", "in-aktif",
+    "dead", "ölü", "olu",
+    "left", "leave", "ayrıldı", "ayrildi",
+    "pasif", "ex", "emekli"
+)
+
+QUALIFIED_RANKS = ("kıdemli", "kidemli", "uzman", "gezgin", "senior", "expert", "wanderer")
+
 class OneTimeCommands(commands.Cog):
     """XP table queries and duplicate player detection with high-performance caching."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self._session: Optional[aiohttp.ClientSession] = None
         self._cache_data: List[Dict[str, Any]] = []
         self._cache_skipped: int = 0
-        self._cache_timestamp: float = 0
-        self._cache_ttl: float = 300  # 5 minutes cache TTL
+        self._cache_timestamp: float = 0.0
+        self._cache_ttl: float = 300.0  # 5 minutes cache TTL
         self.auto_refresh_xp.start()
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Reuse or create persistent aiohttp ClientSession."""
+        if self._session is None or self._session.closed:
+            timeout = aiohttp.ClientTimeout(total=15)
+            self._session = aiohttp.ClientSession(timeout=timeout)
+        return self._session
 
     def cog_unload(self):
         self.auto_refresh_xp.cancel()
+        if self._session and not self._session.closed:
+            self.bot.loop.create_task(self._session.close())
 
     @tasks.loop(minutes=5)
     async def auto_refresh_xp(self):
@@ -53,12 +72,12 @@ class OneTimeCommands(commands.Cog):
             return self._cache_data, self._cache_skipped
             
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(XP_SHEET_URL) as resp:
-                    if resp.status != 200:
-                        logger.error(f"Failed to fetch XP sheet: HTTP Status {resp.status}")
-                        return self._cache_data, self._cache_skipped
-                    content = await resp.text()
+            session = await self._get_session()
+            async with session.get(XP_SHEET_URL) as resp:
+                if resp.status != 200:
+                    logger.error(f"Failed to fetch XP sheet: HTTP Status {resp.status}")
+                    return self._cache_data, self._cache_skipped
+                content = await resp.text()
         except Exception as e:
             logger.error(f"Exception while fetching XP data: {e}")
             return self._cache_data, self._cache_skipped
@@ -122,20 +141,13 @@ class OneTimeCommands(commands.Cog):
 
         active_chars = []
         inactive_count = 0
-        inactive_keywords = [
-            "inactive", "inaktif", "in-aktif",
-            "dead", "ölü", "olu",
-            "left", "leave", "ayrıldı", "ayrildi",
-            "pasif", "ex", "emekli"
-        ]
 
         for entry in data:
             rank_str = entry.get("rank", "").lower()
-            if any(k in rank_str for k in inactive_keywords):
+            if any(k in rank_str for k in INACTIVE_KEYWORDS):
                 inactive_count += 1
             else:
                 active_chars.append(entry)
-
 
         # Case-insensitive player grouping to prevent capitalization bypass
         players: Dict[str, Tuple[str, list]] = {}  # normalized_name -> (display_name, char_entries)
@@ -166,7 +178,7 @@ class OneTimeCommands(commands.Cog):
 
                 # Helper to check if a non-clerk rank is Senior (Kıdemli), Expert (Uzman), or Wanderer (Gezgin)
                 def is_qualified_ranked(r_str):
-                    return any(k in r_str for k in ["kıdemli", "kidemli", "uzman", "gezgin", "senior", "expert", "wanderer"])
+                    return any(k in r_str for k in QUALIFIED_RANKS)
 
                 if clerk_count == 2:
                     reason = "🚨 **2 Clerk Character Violation**"
@@ -275,11 +287,15 @@ class OneTimeCommands(commands.Cog):
                 inline=False
             )
 
-        embed.set_footer(text="Mineria RPG • Rule Enforcement", icon_url=self.bot.user.display_avatar.url)
+        avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Rule Enforcement", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Rule Enforcement")
+            
         await ctx.send(embed=embed)
 
 
-
-
 async def setup(bot: commands.Bot):
-    await bot.add_cog(OneTimeCommands(bot))
+    await bot.add_cog(OneTimeCommands(bot))
+

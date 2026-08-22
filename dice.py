@@ -3,6 +3,9 @@ import re
 import discord
 from discord.ext import commands
 
+VALID_CHAR_PATTERN = re.compile(r'^[0-9dk\+\-]+$')
+DICE_PATTERN = re.compile(r'([+-]?)(?:(\d*)d(\d+)(?:k(\d+))?|(\d+)|k(\d+))')
+
 class Dice(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -16,11 +19,10 @@ class Dice(commands.Cog):
             if sides < 1: return None
             return [{"type": "dice", "num": 1, "sides": sides, "keep": None, "sign": "+", "mult": 1}]
             
-        if not re.fullmatch(r'^[0-9dk\+\-]+$', expr):
+        if not VALID_CHAR_PATTERN.fullmatch(expr):
             return "INVALID_FORMAT"
             
-        pattern = r'([+-]?)(?:(\d*)d(\d+)(?:k(\d+))?|(\d+)|k(\d+))'
-        matches = list(re.finditer(pattern, expr))
+        matches = list(DICE_PATTERN.finditer(expr))
         
         # validation - matches must consume entire string
         if sum(len(m.group(0)) for m in matches) != len(expr):
@@ -158,7 +160,7 @@ class Dice(commands.Cog):
                             
                         parts_str.append(f"{display_sign}{rolls_str}".strip())
                         clean_expr_parts.append(f"{clean_display_sign}{num}d{sides}")
-
+ 
             clean_exp = "".join(clean_expr_parts)
             final_str = " ".join(parts_str)
             
@@ -171,11 +173,18 @@ class Dice(commands.Cog):
         if not results:
              return await ctx.send("❌ Usage: `!roll d6`, `!roll 2d20` or `!roll 1d8 + 3d8`")
         
-        await ctx.send(embed=discord.Embed(
+        avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
+        embed = discord.Embed(
             title=f"🎲 {ctx.author.display_name} rolled the dice:",
             description="\n".join(results),
             color=discord.Color.gold()
-        ).set_footer(text="Mineria RPG • Dice System", icon_url=self.bot.user.display_avatar.url))
+        )
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Dice System", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Dice System")
+
+        await ctx.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Dice(bot))

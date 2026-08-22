@@ -154,7 +154,11 @@ async def handle_info(cog, ctx, *, name: str = None):
         created_at_raw = str(char_data.get("created_at") or "")
         created_at = created_at_raw.split(" ")[0] if created_at_raw else "N/A"
         footer_text = f"Mineria RPG • Created: {created_at}"
-        embed.set_footer(text=footer_text, icon_url=ctx.bot.user.display_avatar.url)
+        avatar_url = ctx.bot.user.display_avatar.url if (ctx.bot.user and ctx.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text=footer_text, icon_url=avatar_url)
+        else:
+            embed.set_footer(text=footer_text)
         embed.set_thumbnail(url=ctx.author.display_avatar.url)
             
         await ctx.send(embed=embed)
@@ -183,7 +187,11 @@ async def handle_list_chars(cog, ctx):
                 lines.pop()
             names = "\n".join(lines) + f"\n\n*... and {len(user_chars) - len(lines)} more characters.*"
         embed.description = names
-        embed.set_footer(text="Mineria RPG • Roster", icon_url=cog.bot.user.display_avatar.url)
+        avatar_url = cog.bot.user.display_avatar.url if (cog.bot.user and cog.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Roster", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Roster")
         embed.set_thumbnail(url=ctx.author.display_avatar.url)
         await ctx.send(embed=embed)
 

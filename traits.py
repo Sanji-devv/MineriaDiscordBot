@@ -4,12 +4,25 @@ import json
 import random
 import time
 from pathlib import Path
+import re
+from typing import Dict, List, Any, Optional
+from log_handler import logger
+
+# Pre-compiled regular expressions for race matching
+NORM_RE = re.compile(r'[\s_\-]+')
+PAREN_RE = re.compile(r'\((.*?)\)')
+SPLIT_RE = re.compile(r'[,/|;]|\bor\b')
+HALF_RE = re.compile(r'half[\s_\-]+')
+WORDS_RE = re.compile(r'[a-zA-Z0-9]+')
+KIN_RE = re.compile(r'-kin\b')
 
 class Traits(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.traits = []
-        self.last_rolls = {}  # user_id -> dict
+        self.traits: List[Dict[str, Any]] = []
+        self.traits_by_cat: Dict[str, List[Dict[str, Any]]] = {}
+        self.race_traits: List[Dict[str, Any]] = []
+        self.last_rolls: Dict[int, Dict[str, Any]] = {}  # user_id -> dict
 
     async def cog_load(self):
         """Loads traits database asynchronously via executor."""
@@ -18,7 +31,7 @@ class Traits(commands.Cog):
         try:
             await loop.run_in_executor(None, self._load_traits_sync)
         except Exception as e:
-            print(f"Error preloading traits: {e}")
+            logger.error(f"Error preloading traits: {e}")
 
     def _load_traits_sync(self):
         file_path = Path(__file__).parent / "datas" / "traits.json"
@@ -26,40 +39,91 @@ class Traits(commands.Cog):
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 self.traits = data.get("traits", [])
+                
+                # Pre-index traits by lower-case category for fast O(1) retrieval
+                by_cat: Dict[str, List[Dict[str, Any]]] = {}
+                race_list: List[Dict[str, Any]] = []
+                for t in self.traits:
+                    cat = t.get("category", "").lower()
+                    if cat:
+                        if cat not in by_cat:
+                            by_cat[cat] = []
+                        by_cat[cat].append(t)
+                    if cat == "race":
+                        race_list.append(t)
+                self.traits_by_cat = by_cat
+                self.race_traits = race_list
+
+    @staticmethod
+    def _is_race_match(trait_name: str, race_query: str) -> bool:
+        """Matches a race query (e.g. halfelf, half-elf, elf) against a trait name parenthetical."""
+        if not race_query or not trait_name:
+            return False
+        q_norm = NORM_RE.sub('', race_query.lower())
+        if not q_norm:
+            return False
+
+        parentheticals = PAREN_RE.findall(trait_name)
+        if not parentheticals:
+            parentheticals = [trait_name]
+
+        for p in parentheticals:
+            p_lower = p.lower()
+            p_norm = NORM_RE.sub('', p_lower)
+
+            # 1. Exact match against entire normalized parenthetical
+            if q_norm == p_norm:
+                return True
+
+            # 2. Split by comma/slash/semicolon/pipe or 'or' (e.g. 'Elf, Desert' or 'Werebat or Werebat-kin')
+            segments = SPLIT_RE.split(p_lower)
+            for seg in segments:
+                seg_norm = NORM_RE.sub('', seg.strip())
+                if q_norm == seg_norm:
+                    return True
+
+                # Treat 'half-xxx' as compound word 'halfxxx' (prevents 'elf' from matching 'half-elf')
+                seg_compound = HALF_RE.sub('half', seg)
+                seg_words = WORDS_RE.findall(seg_compound)
+                if q_norm in seg_words:
+                    return True
+
+                # Handle -kin suffixes (e.g. 'werebear' matching 'werebear-kin')
+                seg_no_kin = KIN_RE.sub('', seg.strip())
+                if q_norm == NORM_RE.sub('', seg_no_kin):
+                    return True
+
+        return False
 
     def _select_trait(self, t_type, val, race, exclude_names):
         """Helper to select a single random trait based on category or race."""
         if t_type == 'category':
+            category_traits = self.traits_by_cat.get(val.lower(), [])
             if race:
                 pool = [
-                    t for t in self.traits
-                    if t.get("category", "").lower() == val.lower()
-                    and t.get("req_race", "Any").lower() in ("any", race.lower())
+                    t for t in category_traits
+                    if (t.get("req_race", "Any").lower() == "any" or self._is_race_match(t.get("req_race", ""), race))
                     and t.get("name") not in exclude_names
                 ]
             else:
                 pool = [
-                    t for t in self.traits
-                    if t.get("category", "").lower() == val.lower()
-                    and t.get("name") not in exclude_names
+                    t for t in category_traits
+                    if t.get("name") not in exclude_names
                 ]
             if pool:
                 return random.choice(pool)
         elif t_type == 'race':
-            val_lower = val.lower() if val else ""
-            # Priority 1: Race traits with race name in parentheses e.g. "Vandal (Human)"
-            race_specific_pool = [
-                tr for tr in self.traits
-                if tr.get("category", "").lower() == "race"
-                and f"({val_lower})" in tr.get("name", "").lower()
-                and tr.get("name") not in exclude_names
-            ]
-            # Priority 2: fallback to any Race trait
+            race_specific_pool = []
+            if val:
+                race_specific_pool = [
+                    tr for tr in self.race_traits
+                    if self._is_race_match(tr.get("name", ""), val)
+                    and tr.get("name") not in exclude_names
+                ]
+            # Priority 2: fallback to any Race trait if no race query or no specific matches
             race_fallback_pool = [
-                tr for tr in self.traits
-                if tr.get("category", "").lower() == "race"
-                and f"({val_lower})" not in tr.get("name", "").lower()
-                and tr.get("name") not in exclude_names
+                tr for tr in self.race_traits
+                if tr.get("name") not in exclude_names
             ]
             pool = race_specific_pool if race_specific_pool else race_fallback_pool
             if pool:
@@ -99,8 +163,11 @@ class Traits(commands.Cog):
         if errors:
             footer_text += f" | Not found: {', '.join(errors)}"
 
-        avatar_url = self.bot.user.display_avatar.url
-        embed.set_footer(text=footer_text, icon_url=avatar_url)
+        avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text=footer_text, icon_url=avatar_url)
+        else:
+            embed.set_footer(text=footer_text)
         return embed
 
     @commands.group(name="trait", aliases=["t"], invoke_without_command=True)
@@ -113,12 +180,34 @@ class Traits(commands.Cog):
             return
 
 
+        # --- Pre-process args to support race(half elf) with spaces ---
+        merged_args = []
+        in_race_bracket = False
+        temp_race_tokens = []
+        for arg in args:
+            if not in_race_bracket and arg.lower().startswith("race("):
+                if arg.endswith(")"):
+                    merged_args.append(arg)
+                else:
+                    in_race_bracket = True
+                    temp_race_tokens.append(arg)
+            elif in_race_bracket:
+                temp_race_tokens.append(arg)
+                if arg.endswith(")"):
+                    merged_args.append(" ".join(temp_race_tokens))
+                    temp_race_tokens = []
+                    in_race_bracket = False
+            else:
+                merged_args.append(arg)
+        if temp_race_tokens:
+            merged_args.append(" ".join(temp_race_tokens))
+
         # --- Parse arguments and build selection order ---
         selection_order = []  # List of tuples: ('category', cat_name) or ('race', race_name)
         
         # Pre-pass to get the race (needed for filtering pools)
         race = None
-        for arg in args:
+        for arg in merged_args:
             arg_lower = arg.lower().strip()
             if arg_lower.startswith("race(") and arg_lower.endswith(")"):
                 race = arg_lower[5:-1].strip()
@@ -126,16 +215,16 @@ class Traits(commands.Cog):
 
         # Second pass: build the selection order
         i = 0
-        while i < len(args):
-            arg = args[i]
+        while i < len(merged_args):
+            arg = merged_args[i]
             arg_lower = arg.lower().strip()
             if arg_lower.startswith("race(") and arg_lower.endswith(")"):
                 r_name = arg_lower[5:-1].strip()
                 selection_order.append(('race', r_name))
             elif arg_lower == "random":
                 count = 1
-                if i + 1 < len(args) and args[i + 1].isdigit():
-                    count = int(args[i + 1])
+                if i + 1 < len(merged_args) and merged_args[i + 1].isdigit():
+                    count = int(merged_args[i + 1])
                     i += 1
                 for _ in range(count):
                     selection_order.append(('random', None))

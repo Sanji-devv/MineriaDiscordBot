@@ -32,7 +32,6 @@ A specialized Discord bot for **Pathfinder Roleplaying Game (1st Edition)** — 
 | `!char list` | `!char list` | List all registered characters you own. |
 | `!char info [name]` | `!char info Varka` | Display the detailed character sheet. |
 | `!char edit` | `!char edit`| Character management operations (also `rename`, `delete`). |
-| `!xp <name>` | `!xp Varka` | Check current XP and level. |
 | `!kia <name>` | `!kia Varka` | Calculate starting XP for a new character (Death penalty). |
 | `!mia <name>` | `!mia Varka` | Calculate starting XP for a new character (Missing penalty). |
 | `!rec` | `!rec` | Toggle automatic class recommendations on/off. |

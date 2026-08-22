@@ -1,8 +1,5 @@
 import discord
 from discord.ext import commands
-import json
-import random
-from pathlib import Path
 
 class Links(commands.Cog):
     def __init__(self, bot):
@@ -35,10 +32,15 @@ class Links(commands.Cog):
             inline=False
         )
         
-        embed.set_footer(text="Mineria RPG • Wiki", icon_url=self.bot.user.display_avatar.url)
+        avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Wiki", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Wiki")
+            
         embed.set_thumbnail(url="https://static.wikia.nocookie.net/mineria/images/e/e6/Site-logo.png/revision/latest?cb=20230101000000")
         
         await ctx.send(embed=embed)
 
 async def setup(bot):
-    await bot.add_cog(Links(bot))
+    await bot.add_cog(Links(bot))
