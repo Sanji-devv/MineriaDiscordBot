@@ -57,6 +57,8 @@ class HelpCog(commands.Cog, name="Help"):
                 "> **`!wiki`** ➔ Official Mineria universe Wiki and reference pages.\n"
                 "> **`!doc`** ➔ Access to server forms and necessary documents.\n"
                 "> **`!d`** ➔ Server rank rule check (1 Ranked + 1 Clerk).\n"
+                "> **`!gm <player>`** ➔ Player's GM history and total session count.\n"
+                "> **`!best <player>`** ➔ Character ranking by most missions/games played.\n"
                 "> **`!rec`** ➔ Toggles the class recommendation system on or off."
             ),
             inline=False,

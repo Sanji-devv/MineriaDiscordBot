@@ -119,16 +119,20 @@ class Documents(commands.Cog):
             return
 
         if not target_file.exists():
-            file_names = [f.name for f in files]
-            matches = await asyncio.to_thread(difflib.get_close_matches, query, file_names, 1, 0.5)
-            if matches:
-                target_file = self.docs_dir / matches[0]
+            direct_match = next((f for f in files if f.name.lower() == query.lower() or f.stem.lower() == query.lower()), None)
+            if direct_match:
+                target_file = direct_match
             else:
-                await ctx.send(
-                    f"❌ File **{query}** not found.\n"
-                    "Use `!doc list` to see all available files."
-                )
-                return
+                file_names = [f.name for f in files]
+                matches = await asyncio.to_thread(difflib.get_close_matches, query, file_names, 1, 0.5)
+                if matches:
+                    target_file = self.docs_dir / matches[0]
+                else:
+                    await ctx.send(
+                        f"❌ File **{query}** not found.\n"
+                        "Use `!doc list` to see all available files."
+                    )
+                    return
 
         try:
             await ctx.send(f"📥 Downloading **{target_file.name}**...", file=discord.File(target_file))

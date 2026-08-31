@@ -57,8 +57,8 @@ class Admin(commands.Cog):
         now = datetime.now()
         today_key = (now.year, now.month, now.day)
         
-        # Schedule: 08:00 AM once per day
-        if now.hour == 8 and now.minute == 0 and self._last_backup_day != today_key:
+        # Schedule: At or after 08:00 AM once per day
+        if now.hour >= 8 and self._last_backup_day != today_key:
             self._last_backup_day = today_key
             # Daily Backup
             await self.perform_backup("daily", retention=7)

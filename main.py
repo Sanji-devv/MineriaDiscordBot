@@ -37,7 +37,7 @@ class MineriaBot(commands.AutoShardedBot):
                 await self.load_extension(ext)
                 loaded.append(ext)
             except Exception as e:
-                logger.critical(f"❌ Failed to load extension {ext}: {e}")
+                logger.critical(f"Failed to load extension {ext}: {e}")
                 
         if loaded:
             logger.info(f"Loaded {len(loaded)} extensions: {', '.join(loaded)}")
@@ -47,7 +47,7 @@ class MineriaBot(commands.AutoShardedBot):
 
 if __name__ == "__main__":
     if not TOKEN:
-        logger.critical("❌ ERROR: DISCORD_TOKEN not found in .env file.")
+        logger.critical("ERROR: DISCORD_TOKEN not found in .env file.")
     else:
         import time
         retry_delay = 60
@@ -62,18 +62,18 @@ if __name__ == "__main__":
             except discord.errors.HTTPException as e:
                 if e.status == 429:
                     logger.warning(
-                        f"⚠️ Rate limited by Discord/Cloudflare (429 Too Many Requests). "
+                        f"Rate limited by Discord/Cloudflare (429 Too Many Requests). "
                         f"Retrying in {retry_delay} seconds..."
                     )
                     time.sleep(retry_delay)
                     retry_delay = min(retry_delay * 2, max_retry_delay)
                 else:
-                    logger.critical(f"❌ HTTP Exception during startup: {e}")
+                    logger.critical(f"HTTP Exception during startup: {e}")
                     time.sleep(30)
             except discord.errors.LoginFailure as e:
-                logger.critical(f"❌ Login failed (invalid token?): {e}")
+                logger.critical(f"Login failed (invalid token?): {e}")
                 logger.info("Sleeping for 120 seconds before retrying...")
                 time.sleep(120)
             except Exception as e:
-                logger.critical(f"❌ Unexpected error during startup: {e}", exc_info=True)
+                logger.critical(f"Unexpected error during startup: {e}", exc_info=True)
                 time.sleep(30)

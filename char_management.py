@@ -10,55 +10,98 @@ async def handle_edit(cog, ctx):
         await ctx.send(embed=embed)
 
 
-async def handle_edit_class(cog, ctx, name: str = None, new_class: str = None):
+async def handle_edit_class(cog, ctx, *args):
         """Edits a character's class."""
-        if not name or not new_class:
-            return await ctx.send("❌ Usage: `!char edit class <Name> <NewClass>`")
+        if not args:
+            embed = discord.Embed(title="✏️ Edit Class", color=discord.Color.blue())
+            embed.description = "Modify a character's class."
+            embed.add_field(name="Usage", value="`!char edit class <Name> <NewClass>`")
+            embed.add_field(name="Example", value="`!char edit class \"Kiros Enuma\" LL Guardian`")
+            return await ctx.send(embed=embed)
 
-        name = name.strip()
-        new_class = new_class.strip()
-        if not name or not new_class:
-            return await ctx.send("❌ Invalid name or class.")
-
+        full_input = " ".join(args).strip()
         characters = await load_json("characters.json")
         uid = str(ctx.author.id)
-        if uid not in characters: return await ctx.send("❌ No characters.")
+        if uid not in characters or not characters[uid]:
+            return await ctx.send("❌ You don't have any saved characters.")
 
-        char_data = next((c for c in characters[uid] if c["name"].lower() == name.lower()), None)
-        if not char_data: return await ctx.send(f"❌ Character **{name}** not found.")
+        # Attempt to match existing character name from user's roster
+        matched_char = None
+        new_class = ""
+        user_chars = characters[uid]
+        
+        # Check from longest character name to shortest
+        for c in sorted(user_chars, key=lambda x: len(x["name"]), reverse=True):
+            c_name = c["name"]
+            if full_input.lower().startswith(c_name.lower()):
+                matched_char = c
+                new_class = full_input[len(c_name):].strip()
+                break
 
-        old_class = char_data.get("class", "None")
-        char_data["class"] = new_class
+        # Fallback if quotes were used: e.g. "Kiros Enuma" Wizard
+        if not matched_char:
+            if len(args) >= 2:
+                name_guess = args[0].strip('"\',')
+                new_class = " ".join(args[1:]).strip()
+                matched_char = next((c for c in user_chars if c["name"].lower() == name_guess.lower()), None)
+
+        if not matched_char or not new_class:
+            return await ctx.send("❌ Could not match character or missing new class.\nUsage: `!char edit class <Name> <NewClass>`")
+
+        old_class = matched_char.get("class", "None")
+        matched_char["class"] = new_class
         await save_json("characters.json", characters)
         
         embed = discord.Embed(
             title="✏️ Class Updated",
-            description=f"**{char_data['name']}**: {old_class} ➡️ **{new_class}**",
+            description=f"**{matched_char['name']}**: {old_class} ➡️ **{new_class}**",
             color=discord.Color.green()
         )
+        avatar_url = cog.bot.user.display_avatar.url if (cog.bot.user and cog.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Character Management", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Character Management")
         await ctx.send(embed=embed)
 
 
-async def handle_edit_stat(cog, ctx, name: str = None, stat: str = None, value: int = None):
+async def handle_edit_stat(cog, ctx, *args):
         """Edits a character's specific stat."""
-        if not name or not stat or value is None:
-            return await ctx.send("❌ Usage: `!char edit stat <Name> <Stat> <Value>`")
+        if not args:
+            embed = discord.Embed(title="✏️ Edit Stat", color=discord.Color.blue())
+            embed.description = "Modify a character's stat value directly."
+            embed.add_field(name="Usage", value="`!char edit stat <Name> <Stat> <Value>`")
+            embed.add_field(name="Example", value="`!char edit stat \"Kiros Enuma\" STR 18`")
+            return await ctx.send(embed=embed)
 
-        name = name.strip()
-        stat = stat.strip()
-        if not name or not stat:
-            return await ctx.send("❌ Invalid name or stat.")
+        tokens = list(args)
+        valid_stats = {"STR", "DEX", "CON", "INT", "WIS", "CHA"}
+        
+        char_name = None
+        stat = None
+        value = None
+
+        # Pattern 1: <Name...> <Stat> <Value>
+        if len(tokens) >= 3 and tokens[-2].upper() in valid_stats and tokens[-1].lstrip('-+').isdigit():
+            char_name = " ".join(tokens[:-2]).strip('"\',')
+            stat = tokens[-2].upper()
+            value = int(tokens[-1])
+        # Pattern 2: <Name...> <Value> <Stat>
+        elif len(tokens) >= 3 and tokens[-1].upper() in valid_stats and tokens[-2].lstrip('-+').isdigit():
+            char_name = " ".join(tokens[:-2]).strip('"\',')
+            stat = tokens[-1].upper()
+            value = int(tokens[-2])
+        else:
+            return await ctx.send("❌ Invalid format.\nUsage: `!char edit stat <Name> <Stat> <Value>` (e.g. `!char edit stat Kiros STR 18`)")
 
         characters = await load_json("characters.json")
         uid = str(ctx.author.id)
-        if uid not in characters: return await ctx.send("❌ No characters.")
+        if uid not in characters or not characters[uid]:
+            return await ctx.send("❌ You don't have any saved characters.")
 
-        char_data = next((c for c in characters[uid] if c["name"].lower() == name.lower()), None)
-        if not char_data: return await ctx.send(f"❌ Character **{name}** not found.")
-
-        stat = stat.upper()
-        if stat not in ["STR", "DEX", "CON", "INT", "WIS", "CHA"]:
-            return await ctx.send("❌ Invalid stat.")
+        char_data = next((c for c in characters[uid] if c["name"].lower() == char_name.lower()), None)
+        if not char_data:
+            return await ctx.send(f"❌ Character **{char_name}** not found.")
 
         old_val = char_data["stats"].get(stat, 0)
         char_data["stats"][stat] = value
@@ -69,6 +112,11 @@ async def handle_edit_stat(cog, ctx, name: str = None, stat: str = None, value: 
             description=f"**{char_data['name']}** {stat}: {old_val} ➡️ **{value}**",
             color=discord.Color.green()
         )
+        avatar_url = cog.bot.user.display_avatar.url if (cog.bot.user and cog.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Character Management", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Character Management")
         await ctx.send(embed=embed)
 
     # ==========================
@@ -104,7 +152,7 @@ async def handle_info(cog, ctx, *, name: str = None):
                 )
                 return await ctx.send(embed=embed)
         else:
-            name = name.strip()
+            name = name.strip().strip('"\'')
             char_data = next((c for c in user_chars if c["name"].lower() == name.lower()), None)
         
         if not char_data:
@@ -121,7 +169,10 @@ async def handle_info(cog, ctx, *, name: str = None):
 
         # 1. Show Detailed Roll History (if available) - Like "!char dr"
         if "stat_history" in char_data:
-             embed.add_field(name="📊 Stats History", value=char_data["stat_history"], inline=False)
+             history_val = str(char_data["stat_history"])
+             if len(history_val) > 1020:
+                 history_val = history_val[:1015] + "..."
+             embed.add_field(name="📊 Stats History", value=history_val, inline=False)
 
         # 2. Stats (Physical / Mental columns)
         stats = char_data.get("stats") or {}
@@ -196,41 +247,67 @@ async def handle_list_chars(cog, ctx):
         await ctx.send(embed=embed)
 
 
-async def handle_rename(cog, ctx, old_name: str = None, new_name: str = None):
+async def handle_rename(cog, ctx, *args):
         """Renames a character."""
-        if not old_name or not new_name:
+        if not args:
             embed = discord.Embed(title="✏️ Rename Character", color=discord.Color.blue())
             embed.description = "Change the name of one of your characters."
-            embed.add_field(name="Usage", value="`!char rename <OldName> <NewName>`")
+            embed.add_field(name="Usage", value="`!char rename <OldName> <NewName>`\n`!char rename \"Old Name\" \"New Name\"`")
+            embed.add_field(name="Example", value="`!char rename \"Kiros Enuma\" \"Kiros Prime\"`")
             return await ctx.send(embed=embed)
-
-        old_name = old_name.strip()
-        new_name = new_name.strip()
-        if not old_name or not new_name:
-            return await ctx.send("❌ Invalid name.")
 
         characters = await load_json("characters.json")
         uid = str(ctx.author.id)
-        if uid not in characters: return await ctx.send("❌ No characters found.")
+        if uid not in characters or not characters[uid]:
+            return await ctx.send("❌ No characters found.")
 
-        for char_data in characters[uid]:
-            if char_data["name"].lower() == old_name.lower():
-                # Check duplication
-                if any(c["name"].lower() == new_name.lower() and c is not char_data for c in characters[uid]):
-                    return await ctx.send(f"❌ You already have a character named **{new_name}**.")
-                
-                char_data["name"] = new_name
-                await save_json("characters.json", characters)
-                embed = discord.Embed(
-                    title="✏️ Character Renamed",
-                    description=f"Character **{old_name}** renamed to **{new_name}**.",
-                    color=discord.Color.orange()
-                )
-                await ctx.send(embed=embed)
-                return
-        
-        
-        await ctx.send(f"❌ Character **{old_name}** not found.")
+        full_input = " ".join(args).strip()
+        user_chars = characters[uid]
+        old_char = None
+        new_name = None
+
+        # Check arrow syntax: !char rename Old Name -> New Name
+        if "->" in full_input:
+            parts = full_input.split("->", 1)
+            old_guess = parts[0].strip().strip('"\'')
+            new_name = parts[1].strip().strip('"\'')
+            old_char = next((c for c in user_chars if c["name"].lower() == old_guess.lower()), None)
+        else:
+            # Match existing character from user's roster
+            for c in sorted(user_chars, key=lambda x: len(x["name"]), reverse=True):
+                c_name = c["name"]
+                if full_input.lower().startswith(c_name.lower()):
+                    old_char = c
+                    new_name = full_input[len(c_name):].strip().strip('"\'')
+                    break
+            
+            # Fallback for 2 quoted args or simple 2 args
+            if not old_char and len(args) >= 2:
+                old_guess = args[0].strip('"\'')
+                new_name = " ".join(args[1:]).strip().strip('"\'')
+                old_char = next((c for c in user_chars if c["name"].lower() == old_guess.lower()), None)
+
+        if not old_char or not new_name:
+            return await ctx.send("❌ Usage: `!char rename <OldName> <NewName>` (e.g. `!char rename \"Old Name\" \"New Name\"`)")
+
+        old_name = old_char["name"]
+        # Check duplicate name
+        if any(c["name"].lower() == new_name.lower() and c is not old_char for c in user_chars):
+            return await ctx.send(f"❌ You already have a character named **{new_name}**.")
+
+        old_char["name"] = new_name
+        await save_json("characters.json", characters)
+        embed = discord.Embed(
+            title="✏️ Character Renamed",
+            description=f"Character **{old_name}** renamed to **{new_name}**.",
+            color=discord.Color.orange()
+        )
+        avatar_url = cog.bot.user.display_avatar.url if (cog.bot.user and cog.bot.user.display_avatar) else None
+        if avatar_url:
+            embed.set_footer(text="Mineria RPG • Character Management", icon_url=avatar_url)
+        else:
+            embed.set_footer(text="Mineria RPG • Character Management")
+        await ctx.send(embed=embed)
 
 
 async def handle_delete_char(cog, ctx, *, name: str = None):
@@ -241,7 +318,7 @@ async def handle_delete_char(cog, ctx, *, name: str = None):
              embed.add_field(name="Usage", value="`!char delete <Name>`")
              return await ctx.send(embed=embed)
 
-        name = name.strip()
+        name = name.strip().strip('"\'')
         if not name:
             return await ctx.send("❌ Invalid name.")
 

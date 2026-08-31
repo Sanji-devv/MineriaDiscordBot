@@ -23,6 +23,8 @@ class Traits(commands.Cog):
         self.traits_by_cat: Dict[str, List[Dict[str, Any]]] = {}
         self.race_traits: List[Dict[str, Any]] = []
         self.last_rolls: Dict[int, Dict[str, Any]] = {}  # user_id -> dict
+        # Initial synchronous load as safety fallback
+        self._load_traits_sync()
 
     async def cog_load(self):
         """Loads traits database asynchronously via executor."""
@@ -44,8 +46,8 @@ class Traits(commands.Cog):
                 by_cat: Dict[str, List[Dict[str, Any]]] = {}
                 race_list: List[Dict[str, Any]] = []
                 for t in self.traits:
-                    cat = t.get("category", "").lower()
-                    if cat:
+                    cat = t.get("category", "").strip().lower()
+                    if cat and cat not in ("none", "disabled", "inactive"):
                         if cat not in by_cat:
                             by_cat[cat] = []
                         by_cat[cat].append(t)
@@ -153,9 +155,10 @@ class Traits(commands.Cog):
             else:
                 field_name = f"{prefix} {cat} Trait: {name}"
                 
+            val_text = f"**[Wiki Page]({url})**" if url else f"**{name}**"
             embed.add_field(
                 name=field_name,
-                value=f"**[Wiki Page]({url})**",
+                value=val_text,
                 inline=False
             )
 
@@ -179,26 +182,45 @@ class Traits(commands.Cog):
             await ctx.send("❌ Trait list not found.")
             return
 
+        # Split on whitespace and commas cleanly
+        cleaned_tokens = []
+        for a in args:
+            for part in a.replace(",", " ").split():
+                if part:
+                    cleaned_tokens.append(part)
 
-        # --- Pre-process args to support race(half elf) with spaces ---
+        # --- Pre-process args to support race(half elf) or race (half elf) with spaces ---
         merged_args = []
         in_race_bracket = False
         temp_race_tokens = []
-        for arg in args:
-            if not in_race_bracket and arg.lower().startswith("race("):
-                if arg.endswith(")"):
-                    merged_args.append(arg)
-                else:
+        i = 0
+        while i < len(cleaned_tokens):
+            tok = cleaned_tokens[i]
+            tok_lower = tok.lower()
+            if not in_race_bracket:
+                if tok_lower.startswith("race(") and tok_lower.endswith(")"):
+                    merged_args.append(tok)
+                elif tok_lower.startswith("race("):
                     in_race_bracket = True
-                    temp_race_tokens.append(arg)
-            elif in_race_bracket:
-                temp_race_tokens.append(arg)
-                if arg.endswith(")"):
+                    temp_race_tokens.append(tok)
+                elif tok_lower == "race" and i + 1 < len(cleaned_tokens) and cleaned_tokens[i + 1].startswith("("):
+                    in_race_bracket = True
+                    temp_race_tokens.append("race" + cleaned_tokens[i + 1])
+                    i += 1
+                    if temp_race_tokens[0].endswith(")"):
+                        merged_args.append(temp_race_tokens[0])
+                        temp_race_tokens = []
+                        in_race_bracket = False
+                else:
+                    merged_args.append(tok)
+            else:
+                temp_race_tokens.append(tok)
+                if tok.endswith(")"):
                     merged_args.append(" ".join(temp_race_tokens))
                     temp_race_tokens = []
                     in_race_bracket = False
-            else:
-                merged_args.append(arg)
+            i += 1
+
         if temp_race_tokens:
             merged_args.append(" ".join(temp_race_tokens))
 
@@ -235,7 +257,11 @@ class Traits(commands.Cog):
                     selection_order.append(('category', arg_lower))
             i += 1
 
-        all_cats = sorted(list(set([t.get("category", "") for t in traits if t.get("category")])))
+        all_cats = sorted(list(set([
+            t.get("category", "").strip()
+            for t in traits
+            if t.get("category") and t.get("category").strip().lower() not in ("none", "disabled", "inactive")
+        ])))
         # Show Race as Race(human) in category hint
         display_cats = [cat if cat != "Race" else "Race(human)" for cat in all_cats]
         cat_list = ", ".join(display_cats)
@@ -343,20 +369,20 @@ class Traits(commands.Cog):
         """
         user_id = ctx.author.id
         
-        # Clean up any expired entries (older than 15 minutes / 900 seconds)
+        # Clean up any expired entries (older than 24 hours / 86400 seconds)
         now = time.time()
-        expired_keys = [k for k, v in self.last_rolls.items() if now - v.get("time", 0) > 900]
+        expired_keys = [k for k, v in self.last_rolls.items() if now - v.get("time", 0) > 86400]
         for k in expired_keys:
             del self.last_rolls[k]
 
         if user_id not in self.last_rolls:
             try:
                 await ctx.message.delete()
-            except discord.Forbidden:
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
                 pass
             await ctx.send(
                 f"❌ **{ctx.author.mention}**, no active or non-expired trait selection found. "
-                f"Please use `!trait <categories>` first (valid for 15 minutes).",
+                f"Please use `!trait <categories>` first (valid for 24 hours).",
                 delete_after=10
             )
             return
@@ -368,10 +394,17 @@ class Traits(commands.Cog):
         results = roll_data["results"].copy()
         errors = roll_data["errors"].copy()
 
-        if not args:
+        # Clean and split on commas/spaces
+        cleaned_args = []
+        for a in args:
+            for part in a.replace(",", " ").split():
+                if part:
+                    cleaned_args.append(part)
+
+        if not cleaned_args:
             try:
                 await ctx.message.delete()
-            except discord.Forbidden:
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
                 pass
             await ctx.send(
                 f"❌ **{ctx.author.mention}**, please specify index numbers (1, 2, 3), "
@@ -384,10 +417,10 @@ class Traits(commands.Cog):
         invalid_targets = []
 
         # Parse targets
-        if any(arg.lower().strip() == "all" for arg in args):
+        if any(arg.lower().strip() == "all" for arg in cleaned_args):
             indices_to_reroll = list(range(len(resolved_order)))
         else:
-            for arg in args:
+            for arg in cleaned_args:
                 arg_lower = arg.lower().strip()
                 if arg_lower.isdigit():
                     idx = int(arg_lower) - 1
@@ -413,7 +446,7 @@ class Traits(commands.Cog):
         if invalid_targets:
             try:
                 await ctx.message.delete()
-            except discord.Forbidden:
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
                 pass
             await ctx.send(
                 f"❌ **{ctx.author.mention}**, invalid or not found categories/numbers: "
@@ -426,9 +459,17 @@ class Traits(commands.Cog):
         rerolled_any = False
         for idx in indices_to_reroll:
             t_type, val = resolved_order[idx]
-            exclude_names = {results[i].get("name") for i in range(len(results)) if i != idx and results[i] and results[i].get("name")}
+            other_names = {results[i].get("name") for i in range(len(results)) if i != idx and results[i] and results[i].get("name")}
+            current_name = results[idx].get("name") if results[idx] else None
             
+            # First try excluding both other selected traits AND the current trait to guarantee a fresh roll
+            exclude_names = other_names | ({current_name} if current_name else set())
             new_trait = self._select_trait(t_type, val, race, exclude_names)
+            
+            # If no other traits exist in the pool, fallback to excluding just other selected traits
+            if not new_trait:
+                new_trait = self._select_trait(t_type, val, race, other_names)
+                
             if new_trait:
                 results[idx] = new_trait
                 rerolled_any = True
@@ -436,7 +477,7 @@ class Traits(commands.Cog):
         if not rerolled_any:
             try:
                 await ctx.message.delete()
-            except discord.Forbidden:
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
                 pass
             await ctx.send(
                 f"❌ **{ctx.author.mention}**, no other suitable traits available to reroll for specified categories.",
@@ -463,12 +504,12 @@ class Traits(commands.Cog):
 
         try:
             await message.edit(embed=embed)
-        except discord.NotFound:
+        except (discord.NotFound, discord.HTTPException):
             try:
                 await ctx.message.delete()
-            except discord.Forbidden:
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
                 pass
-            await ctx.send("❌ Original trait message not found. Please issue a new `!trait` command.", delete_after=10)
+            await ctx.send("❌ Original trait message not found or could not be edited. Please issue a new `!trait` command.", delete_after=10)
             return
 
         self.last_rolls[user_id]["results"] = results
@@ -476,7 +517,7 @@ class Traits(commands.Cog):
         
         try:
             await ctx.message.delete()
-        except discord.Forbidden:
+        except (discord.Forbidden, discord.NotFound, discord.HTTPException):
             pass
 
 async def setup(bot):

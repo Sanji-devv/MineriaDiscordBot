@@ -122,7 +122,7 @@
         {
             "name": "Clockwork Engineer (Combat)",
             "url": "https://www.d20pfsrd.com/traits/combat-traits/clockwork-engineer-combat/",
-            "category": "Combat",
+            "category": "none",
             "req_race": "Any",
             "req_class": "Any"
         },

@@ -54,7 +54,7 @@ def normalize_str(s: str) -> str:
     """Normalize string for robust, case-insensitive, Turkish-character-friendly comparisons."""
     if not s:
         return ""
-    return " ".join(s.lower().translate(TR_MAP).split())
+    return " ".join(s.translate(TR_MAP).lower().split())
 
 def parse_xp_value(val: Any) -> float:
     """Helper to safely parse numeric XP values from sheet cells across all number formats."""

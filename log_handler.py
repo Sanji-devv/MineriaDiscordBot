@@ -12,16 +12,31 @@ def setup_logging():
     
     if not logger.handlers:
         file_handler = logging.FileHandler(log_dir / "mineria.log", encoding="utf-8")
-        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+        file_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
         logger.addHandler(file_handler)
 
         console_handler = logging.StreamHandler()
-        console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+        console_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%H:%M:%S'))
         logger.addHandler(console_handler)
     
     return logger
 
 logger = setup_logging()
+
+def format_ctx(ctx: commands.Context) -> str:
+    """Format execution context into a concise summary with server/channel and user."""
+    if ctx.guild:
+        channel_name = getattr(ctx.channel, "name", str(getattr(ctx.channel, "id", "unknown")))
+        origin = f"[{ctx.guild.name}/#{channel_name}]"
+    else:
+        origin = "[DM]"
+    
+    content = ctx.message.content.replace("\n", " ").strip() if ctx.message else ""
+    if len(content) > 80:
+        content = content[:77] + "..."
+    
+    author_name = ctx.author.name if ctx.author else "Unknown"
+    return f"{origin} {author_name}: {content}"
 
 class LogHandler(commands.Cog, name="LogHandler"):
     def __init__(self, bot):
@@ -29,25 +44,31 @@ class LogHandler(commands.Cog, name="LogHandler"):
 
     @commands.Cog.listener()
     async def on_command_completion(self, ctx):
-        """Log when a command completes successfully."""
-        logger.info(f"✅ EXEC | User: {ctx.author} ({ctx.author.id}) | Cmd: {ctx.message.content} | Guild: {ctx.guild}")
+        """Log concise command execution summary."""
+        logger.info(format_ctx(ctx))
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
-        """Log command errors (user-facing messages handled by error_handler.py)."""
-        user_info = f"User: {ctx.author} ({ctx.author.id})"
-        cmd_name = ctx.command.name if ctx.command else "Unknown"
-
+        """Log concise command error summary."""
+        prefix = format_ctx(ctx)
+        
         if isinstance(error, commands.CommandNotFound):
-            logger.warning(f"🚫 UNKNOWN COMMAND | {user_info} | Message: {ctx.message.content}")
+            logger.warning(f"{prefix} -> Unknown command")
         elif isinstance(error, commands.MissingRequiredArgument):
-            logger.warning(f"⚠️ MISSING ARGUMENT | {user_info} | Command: {cmd_name} | Error: {error}")
+            logger.warning(f"{prefix} -> Missing arg '{error.param.name}'")
         elif isinstance(error, commands.BadArgument):
-            logger.warning(f"⚠️ BAD ARGUMENT | {user_info} | Command: {cmd_name} | Error: {error}")
+            logger.warning(f"{prefix} -> Bad argument: {error}")
         elif isinstance(error, commands.CommandOnCooldown):
-            logger.warning(f"⏳ COOLDOWN | {user_info} | Command: {cmd_name} | Retry: {error.retry_after:.2f}s")
+            logger.warning(f"{prefix} -> Cooldown ({error.retry_after:.1f}s)")
+        elif isinstance(error, commands.MissingPermissions):
+            logger.warning(f"{prefix} -> Missing permissions")
+        elif isinstance(error, commands.BotMissingPermissions):
+            logger.warning(f"{prefix} -> Bot missing permissions")
+        elif isinstance(error, commands.NotOwner):
+            logger.warning(f"{prefix} -> Not owner")
         else:
-            logger.error(f"❌ COMMAND ERROR | {user_info} | Command: {cmd_name} | Error: {error}", exc_info=True)
+            orig = getattr(error, "original", error)
+            logger.error(f"{prefix} -> Error: {orig}")
 
 async def setup(bot):
     await bot.add_cog(LogHandler(bot))

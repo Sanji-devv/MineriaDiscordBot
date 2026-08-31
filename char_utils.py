@@ -39,12 +39,17 @@ async def load_json(filename: str, force_reload: bool = False) -> Union[Dict, Li
         raise
 
 async def save_json(filename: str, data: Any) -> None:
-    """Saves data to a JSON file and updates the in-memory cache."""
+    """Saves data to a JSON file atomically and updates the in-memory cache."""
     path = DATA_DIR / filename
     path.parent.mkdir(parents=True, exist_ok=True)
     _JSON_CACHE[filename] = (time.time(), copy.deepcopy(data))
-    async with aiofiles.open(path, "w", encoding="utf-8") as f:
+    
+    tmp_path = DATA_DIR / f"{filename}.tmp"
+    async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
         await f.write(json.dumps(data, indent=4))
+    
+    # Atomic replace
+    tmp_path.replace(path)
 
 
 def roll_stat_detailed(num_dice: int) -> Tuple[List[int], List[int]]:
@@ -89,18 +94,28 @@ def get_recommendations(stats: Dict[str, int], classes: List[dict]) -> List[dict
 
 class BonusSelectView(discord.ui.View):
     def __init__(self, cog, ctx, creation, roll_history, bonus_val):
-        super().__init__(timeout=300)
+        super().__init__(timeout=86400)
         self.cog = cog
         self.ctx = ctx
         self.creation = creation
         self.roll_history = roll_history
         self.bonus_val = bonus_val
+        self.message = None
         
         stats = ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
         for stat in stats:
             btn = discord.ui.Button(label=f"+{bonus_val} {stat}", style=discord.ButtonStyle.secondary, custom_id=stat)
             btn.callback = self.make_callback(stat)
             self.add_item(btn)
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
 
     def make_callback(self, stat):
         async def callback(interaction: discord.Interaction):
@@ -122,13 +137,19 @@ class BonusSelectView(discord.ui.View):
                     child.style = discord.ButtonStyle.success
             
             # Update Embed
-            new_history = self.roll_history + f"\n✨ **Flexible Bonus**: Applied **+{self.bonus_val} {stat}**"
+            base_history = self.creation.get("stat_history", self.roll_history)
+            new_history = base_history + f"\n **Flexible Bonus**: Applied **+{self.bonus_val} {stat}**"
             self.creation["stat_history"] = new_history
             
-            racial_mods = self.cog.parse_racial_modifiers(self.creation["race_data"])
+            racial_mods = self.cog.parse_racial_modifiers(self.creation["race_data"]).copy()
+            # Clear flexible stat prompt since it has already been applied
+            racial_mods["ANY"] = 0
             embed = self.cog.generate_stat_embed(self.ctx, self.creation, new_history, racial_mods)
             
-            await interaction.response.edit_message(embed=embed, view=self)
+            try:
+                await interaction.response.edit_message(embed=embed, view=self)
+            except Exception as e:
+                logger.warning(f"Failed to update bonus view message: {e}")
             self.stop()
         return callback
 

@@ -85,8 +85,8 @@ class Dice(commands.Cog):
             await ctx.send(embed=embed)
             return
 
-        # Allow multiple rolls separated by comma (e.g., "d20, d6")
-        raw_exprs = [e.strip() for e in expression.split(",")]
+        # Allow multiple rolls separated by comma (e.g., "d20, d6") - capped at 20 rolls per command
+        raw_exprs = [e.strip() for e in expression.split(",") if e.strip()][:20]
 
         results = []
         for expr in raw_exprs:
@@ -173,10 +173,14 @@ class Dice(commands.Cog):
         if not results:
              return await ctx.send("❌ Usage: `!roll d6`, `!roll 2d20` or `!roll 1d8 + 3d8`")
         
+        desc_text = "\n".join(results)
+        if len(desc_text) > 4000:
+            desc_text = desc_text[:3900] + "\n*... (output truncated)*"
+
         avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
         embed = discord.Embed(
             title=f"🎲 {ctx.author.display_name} rolled the dice:",
-            description="\n".join(results),
+            description=desc_text,
             color=discord.Color.gold()
         )
         if avatar_url:

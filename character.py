@@ -67,7 +67,10 @@ class CharacterCog(commands.Cog, name="Character"):
             color=discord.Color.gold()
         )
 
-        embed.add_field(name="📊 Details", value=rolls_text, inline=False)
+        details_val = rolls_text
+        if len(details_val) > 1020:
+            details_val = details_val[:1015] + "..."
+        embed.add_field(name="📊 Details", value=details_val, inline=False)
         
         final_stats = creation["stats"]
 
@@ -141,7 +144,7 @@ class CharacterCog(commands.Cog, name="Character"):
     # ==========================
 
     @char.command(name="create")
-    async def create(self, ctx: commands.Context, race_name: str = None):
+    async def create(self, ctx: commands.Context, *, race_name: str = None):
         await handle_create(self, ctx, race_name)
 
     @char.command(name="dr")
@@ -149,16 +152,16 @@ class CharacterCog(commands.Cog, name="Character"):
         await handle_distribute(self, ctx, *args)
 
     @char.command(name="add")
-    async def add_stat(self, ctx: commands.Context, stat: str = None, value: int = None):
-        await handle_add_stat(self, ctx, stat, value)
+    async def add_stat(self, ctx: commands.Context, *args):
+        await handle_add_stat(self, ctx, *args)
 
     @char.command(name="remove")
-    async def remove_stat(self, ctx: commands.Context, stat: str = None, value: int = None):
-        await handle_remove_stat(self, ctx, stat, value)
+    async def remove_stat(self, ctx: commands.Context, *args):
+        await handle_remove_stat(self, ctx, *args)
 
     @char.command(name="save")
     async def save_char(self, ctx: commands.Context, *, name: str = None):
-        await handle_save_char(self, ctx, name)
+        await handle_save_char(self, ctx, name=name)
 
     @commands.group(name="rec", invoke_without_command=True)
     async def rec(self, ctx: commands.Context):
@@ -177,28 +180,28 @@ class CharacterCog(commands.Cog, name="Character"):
         await handle_edit(self, ctx)
 
     @edit.command(name="class")
-    async def edit_class(self, ctx: commands.Context, name: str = None, new_class: str = None):
-        await handle_edit_class(self, ctx, name, new_class)
+    async def edit_class(self, ctx: commands.Context, *args):
+        await handle_edit_class(self, ctx, *args)
 
     @edit.command(name="stat")
-    async def edit_stat(self, ctx: commands.Context, name: str = None, stat: str = None, value: int = None):
-        await handle_edit_stat(self, ctx, name, stat, value)
+    async def edit_stat(self, ctx: commands.Context, *args):
+        await handle_edit_stat(self, ctx, *args)
 
     @char.command(name="info")
     async def info(self, ctx: commands.Context, *, name: str = None):
-        await handle_info(self, ctx, name)
+        await handle_info(self, ctx, name=name)
 
     @char.command(name="list")
     async def list_chars(self, ctx: commands.Context):
         await handle_list_chars(self, ctx)
 
     @char.command(name="rename")
-    async def rename(self, ctx: commands.Context, old_name: str = None, new_name: str = None):
-        await handle_rename(self, ctx, old_name, new_name)
+    async def rename(self, ctx: commands.Context, *args):
+        await handle_rename(self, ctx, *args)
 
     @char.command(name="delete")
     async def delete_char(self, ctx: commands.Context, *, name: str = None):
-        await handle_delete_char(self, ctx, name)
+        await handle_delete_char(self, ctx, name=name)
 
 async def setup(bot):
     await bot.add_cog(CharacterCog(bot))
