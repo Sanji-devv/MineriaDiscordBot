@@ -68,7 +68,6 @@ The bot listens to the following prefixes:
 
 ### 6. ⚙️ Administration, Security & Clean Logging (`admin.py`, `log_handler.py`, `error_handler.py`)
 - **Concise Log Summaries:** Clean log format (`[Server/#channel] User: !cmd -> Status`) for minimal noise in console and `logs/mineria.log`.
-- **Automated Data Backups:** Periodically archives the `datas/` directory into timestamped ZIP files under `backups/`.
 - **Robust Exception Handling:** Catches transient Discord API exceptions (`discord.NotFound`, `discord.Forbidden`) to ensure high availability.
 
 ---
@@ -118,7 +117,6 @@ The bot listens to the following prefixes:
 ### 🔒 Admin Commands (Owner Only)
 | Command | Example | Description |
 |---|---|---|
-| `!backup` | `!backup` | Trigger an immediate manual ZIP backup of `datas/`. |
 | `!sync` | `!sync` | Synchronize the Discord application command tree. |
 | `!broadcast <message>` | `!broadcast Server update` | Send a broadcast message to configured announcement channels. |
 

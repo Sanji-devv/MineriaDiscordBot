@@ -40,9 +40,10 @@ class ErrorHandler(commands.Cog):
                 traceback.print_exception(type(error), error, error.__traceback__)
                 
                 # Show Generic Error to User
+                err_text = str(error).strip() or repr(error) or type(error).__name__
                 embed = discord.Embed(
                     title="❌ Unexpected Error",
-                    description=f"An error occurred while executing `{ctx.command}`.\n```py\n{str(error)[:200]}```",
+                    description=f"An error occurred while executing `{ctx.command}`.\n```py\n{err_text[:200]}```",
                     color=discord.Color.red()
                 )
                 embed.set_footer(text="The error has been logged for review.")
