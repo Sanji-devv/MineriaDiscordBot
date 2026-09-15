@@ -1,7 +1,7 @@
 import discord
 import random
 import statistics
-from char_utils import load_json, save_json, roll_stat_detailed, get_recommendations, BonusSelectView
+from char_utils import load_json, save_json, roll_stat_detailed, get_recommendations, BonusSelectView, get_file_lock
 
 async def handle_create(cog, ctx, race_name: str = None):
         """
@@ -298,26 +298,29 @@ async def handle_save_char(cog, ctx, *, name: str = None):
             return await ctx.send("❌ Invalid name.")
 
         creation = cog.active_creations[user_id]
-        characters = await load_json("characters.json")
         uid = str(user_id)
-        
-        if uid not in characters: characters[uid] = []
-        if any(c["name"].lower() == name.lower() for c in characters[uid]):
-            return await ctx.send(f"❌ Name **{name}** is taken.")
 
-        new_char = {
-            "name": name,
-            "race": creation["race_name"],
-            "class": "None",
-            "stats": creation["stats"],
-            "created_at": str(ctx.message.created_at)
-        }
+        async with get_file_lock("characters.json"):
+            characters = await load_json("characters.json", force_reload=True)
+            if uid not in characters: characters[uid] = []
+            if any(c["name"].lower() == name.lower() for c in characters[uid]):
+                return await ctx.send(f"❌ Name **{name}** is taken.")
 
-        if "stat_history" in creation:
-             new_char["stat_history"] = creation["stat_history"]
-        
-        characters[uid].append(new_char)
-        await save_json("characters.json", characters)
+            created_time = str(ctx.message.created_at) if hasattr(ctx, "message") and ctx.message else ""
+            new_char = {
+                "name": name,
+                "race": creation["race_name"],
+                "class": "None",
+                "stats": creation["stats"],
+                "created_at": created_time
+            }
+
+            if "stat_history" in creation:
+                 new_char["stat_history"] = creation["stat_history"]
+            
+            characters[uid].append(new_char)
+            await save_json("characters.json", characters)
+
         del cog.active_creations[user_id]
         
         embed = discord.Embed(
@@ -348,22 +351,25 @@ async def handle_rec(cog, ctx):
 
 async def handle_rec_open(cog, ctx):
         """Enables class recommendations."""
-        settings = await load_json("user_settings.json")
         uid = str(ctx.author.id)
-        if uid not in settings: settings[uid] = {}
-        settings[uid]["show_recommendations"] = True
-        await save_json("user_settings.json", settings)
+        async with get_file_lock("user_settings.json"):
+            settings = await load_json("user_settings.json", force_reload=True)
+            if uid not in settings: settings[uid] = {}
+            settings[uid]["show_recommendations"] = True
+            await save_json("user_settings.json", settings)
         await ctx.send("✅ Recommendations **Enabled**.")
 
 
 async def handle_rec_close(cog, ctx):
         """Disables class recommendations."""
-        settings = await load_json("user_settings.json")
         uid = str(ctx.author.id)
-        if uid not in settings: settings[uid] = {}
-        settings[uid]["show_recommendations"] = False
-        await save_json("user_settings.json", settings)
+        async with get_file_lock("user_settings.json"):
+            settings = await load_json("user_settings.json", force_reload=True)
+            if uid not in settings: settings[uid] = {}
+            settings[uid]["show_recommendations"] = False
+            await save_json("user_settings.json", settings)
         await ctx.send("❌ Recommendations **Disabled**.")
+
 
     # ==========================
     # EDITING COMMANDS

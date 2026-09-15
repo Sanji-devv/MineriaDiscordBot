@@ -1,5 +1,5 @@
 import discord
-from char_utils import load_json, save_json
+from char_utils import load_json, save_json, get_file_lock
 
 async def handle_edit(cog, ctx):
         """Edit saved character details."""
@@ -20,39 +20,42 @@ async def handle_edit_class(cog, ctx, *args):
             return await ctx.send(embed=embed)
 
         full_input = " ".join(args).strip()
-        characters = await load_json("characters.json")
         uid = str(ctx.author.id)
-        if uid not in characters or not characters[uid]:
-            return await ctx.send("❌ You don't have any saved characters.")
 
-        # Attempt to match existing character name from user's roster
-        matched_char = None
-        new_class = ""
-        user_chars = characters[uid]
-        
-        # Check from longest character name to shortest
-        for c in sorted(user_chars, key=lambda x: len(x["name"]), reverse=True):
-            c_name = c["name"]
-            if full_input.lower().startswith(c_name.lower()):
-                matched_char = c
-                new_class = full_input[len(c_name):].strip()
-                break
+        async with get_file_lock("characters.json"):
+            characters = await load_json("characters.json", force_reload=True)
+            if uid not in characters or not characters[uid]:
+                return await ctx.send("❌ You don't have any saved characters.")
 
-        # Fallback if quotes were used: e.g. "Kiros Enuma" Wizard
-        if not matched_char:
-            if len(args) >= 2:
-                name_guess = args[0].strip('"\',')
-                new_class = " ".join(args[1:]).strip()
-                matched_char = next((c for c in user_chars if c["name"].lower() == name_guess.lower()), None)
+            # Attempt to match existing character name from user's roster
+            matched_char = None
+            new_class = ""
+            user_chars = characters[uid]
+            
+            # Check from longest character name to shortest
+            for c in sorted(user_chars, key=lambda x: len(x["name"]), reverse=True):
+                c_name = c["name"]
+                if full_input.lower().startswith(c_name.lower()):
+                    matched_char = c
+                    new_class = full_input[len(c_name):].strip()
+                    break
 
-        if not matched_char or not new_class:
-            return await ctx.send("❌ Could not match character or missing new class.\nUsage: `!char edit class <Name> <NewClass>`")
+            # Fallback if quotes were used: e.g. "Kiros Enuma" Wizard
+            if not matched_char:
+                if len(args) >= 2:
+                    name_guess = args[0].strip('"\',')
+                    new_class = " ".join(args[1:]).strip()
+                    matched_char = next((c for c in user_chars if c["name"].lower() == name_guess.lower()), None)
 
-        old_class = matched_char.get("class", "None")
-        matched_char["class"] = new_class
-        await save_json("characters.json", characters)
+            if not matched_char or not new_class:
+                return await ctx.send("❌ Could not match character or missing new class.\nUsage: `!char edit class <Name> <NewClass>`")
+
+            old_class = matched_char.get("class", "None")
+            matched_char["class"] = new_class
+            await save_json("characters.json", characters)
         
         embed = discord.Embed(
+
             title="✏️ Class Updated",
             description=f"**{matched_char['name']}**: {old_class} ➡️ **{new_class}**",
             color=discord.Color.green()
@@ -94,20 +97,22 @@ async def handle_edit_stat(cog, ctx, *args):
         else:
             return await ctx.send("❌ Invalid format.\nUsage: `!char edit stat <Name> <Stat> <Value>` (e.g. `!char edit stat Kiros STR 18`)")
 
-        characters = await load_json("characters.json")
         uid = str(ctx.author.id)
-        if uid not in characters or not characters[uid]:
-            return await ctx.send("❌ You don't have any saved characters.")
+        async with get_file_lock("characters.json"):
+            characters = await load_json("characters.json", force_reload=True)
+            if uid not in characters or not characters[uid]:
+                return await ctx.send("❌ You don't have any saved characters.")
 
-        char_data = next((c for c in characters[uid] if c["name"].lower() == char_name.lower()), None)
-        if not char_data:
-            return await ctx.send(f"❌ Character **{char_name}** not found.")
+            char_data = next((c for c in characters[uid] if c["name"].lower() == char_name.lower()), None)
+            if not char_data:
+                return await ctx.send(f"❌ Character **{char_name}** not found.")
 
-        old_val = char_data["stats"].get(stat, 0)
-        char_data["stats"][stat] = value
-        await save_json("characters.json", characters)
+            old_val = char_data["stats"].get(stat, 0)
+            char_data["stats"][stat] = value
+            await save_json("characters.json", characters)
         
         embed = discord.Embed(
+
             title="✏️ Stat Updated",
             description=f"**{char_data['name']}** {stat}: {old_val} ➡️ **{value}**",
             color=discord.Color.green()
@@ -256,47 +261,49 @@ async def handle_rename(cog, ctx, *args):
             embed.add_field(name="Example", value="`!char rename \"Kiros Enuma\" \"Kiros Prime\"`")
             return await ctx.send(embed=embed)
 
-        characters = await load_json("characters.json")
         uid = str(ctx.author.id)
-        if uid not in characters or not characters[uid]:
-            return await ctx.send("❌ No characters found.")
+        async with get_file_lock("characters.json"):
+            characters = await load_json("characters.json", force_reload=True)
+            if uid not in characters or not characters[uid]:
+                return await ctx.send("❌ No characters found.")
 
-        full_input = " ".join(args).strip()
-        user_chars = characters[uid]
-        old_char = None
-        new_name = None
+            full_input = " ".join(args).strip()
+            user_chars = characters[uid]
+            old_char = None
+            new_name = None
 
-        # Check arrow syntax: !char rename Old Name -> New Name
-        if "->" in full_input:
-            parts = full_input.split("->", 1)
-            old_guess = parts[0].strip().strip('"\'')
-            new_name = parts[1].strip().strip('"\'')
-            old_char = next((c for c in user_chars if c["name"].lower() == old_guess.lower()), None)
-        else:
-            # Match existing character from user's roster
-            for c in sorted(user_chars, key=lambda x: len(x["name"]), reverse=True):
-                c_name = c["name"]
-                if full_input.lower().startswith(c_name.lower()):
-                    old_char = c
-                    new_name = full_input[len(c_name):].strip().strip('"\'')
-                    break
-            
-            # Fallback for 2 quoted args or simple 2 args
-            if not old_char and len(args) >= 2:
-                old_guess = args[0].strip('"\'')
-                new_name = " ".join(args[1:]).strip().strip('"\'')
+            # Check arrow syntax: !char rename Old Name -> New Name
+            if "->" in full_input:
+                parts = full_input.split("->", 1)
+                old_guess = parts[0].strip().strip('"\'')
+                new_name = parts[1].strip().strip('"\'')
                 old_char = next((c for c in user_chars if c["name"].lower() == old_guess.lower()), None)
+            else:
+                # Match existing character from user's roster
+                for c in sorted(user_chars, key=lambda x: len(x["name"]), reverse=True):
+                    c_name = c["name"]
+                    if full_input.lower().startswith(c_name.lower()):
+                        old_char = c
+                        new_name = full_input[len(c_name):].strip().strip('"\'')
+                        break
+                
+                # Fallback for 2 quoted args or simple 2 args
+                if not old_char and len(args) >= 2:
+                    old_guess = args[0].strip('"\'')
+                    new_name = " ".join(args[1:]).strip().strip('"\'')
+                    old_char = next((c for c in user_chars if c["name"].lower() == old_guess.lower()), None)
 
-        if not old_char or not new_name:
-            return await ctx.send("❌ Usage: `!char rename <OldName> <NewName>` (e.g. `!char rename \"Old Name\" \"New Name\"`)")
+            if not old_char or not new_name:
+                return await ctx.send("❌ Usage: `!char rename <OldName> <NewName>` (e.g. `!char rename \"Old Name\" \"New Name\"`)")
 
-        old_name = old_char["name"]
-        # Check duplicate name
-        if any(c["name"].lower() == new_name.lower() and c is not old_char for c in user_chars):
-            return await ctx.send(f"❌ You already have a character named **{new_name}**.")
+            old_name = old_char["name"]
+            # Check duplicate name
+            if any(c["name"].lower() == new_name.lower() and c is not old_char for c in user_chars):
+                return await ctx.send(f"❌ You already have a character named **{new_name}**.")
 
-        old_char["name"] = new_name
-        await save_json("characters.json", characters)
+            old_char["name"] = new_name
+            await save_json("characters.json", characters)
+
         embed = discord.Embed(
             title="✏️ Character Renamed",
             description=f"Character **{old_name}** renamed to **{new_name}**.",
@@ -322,20 +329,20 @@ async def handle_delete_char(cog, ctx, *, name: str = None):
         if not name:
             return await ctx.send("❌ Invalid name.")
 
-        characters = await load_json("characters.json")
         uid = str(ctx.author.id)
-        
-        if uid not in characters or not characters[uid]:
-            return await ctx.send("❌ You don't have any characters to delete.")
+        async with get_file_lock("characters.json"):
+            characters = await load_json("characters.json", force_reload=True)
+            if uid not in characters or not characters[uid]:
+                return await ctx.send("❌ You don't have any characters to delete.")
 
-        # Filter out the character to delete
-        original_count = len(characters[uid])
-        characters[uid] = [c for c in characters[uid] if c["name"].lower() != name.lower()]
-        
-        if len(characters[uid]) == original_count:
-             return await ctx.send(f"❌ Character **{name}** not found.")
+            # Filter out the character to delete
+            original_count = len(characters[uid])
+            characters[uid] = [c for c in characters[uid] if c["name"].lower() != name.lower()]
+            
+            if len(characters[uid]) == original_count:
+                 return await ctx.send(f"❌ Character **{name}** not found.")
 
-        await save_json("characters.json", characters)
+            await save_json("characters.json", characters)
         
         embed = discord.Embed(
             title="🗑️ Character Deleted",
@@ -343,4 +350,5 @@ async def handle_delete_char(cog, ctx, *, name: str = None):
             color=discord.Color.red()
         )
         await ctx.send(embed=embed)
+
 

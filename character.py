@@ -1,4 +1,5 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 from typing import Dict, Any, List, Optional, Tuple, Union
 import re
@@ -10,6 +11,7 @@ from char_creation import *
 from char_management import *
 from char_utils import *
 from pathlib import Path
+from log_handler import logger
 
 # =================================================================================================
 # CHARACTER COG
@@ -19,6 +21,7 @@ class CharacterCog(commands.Cog, name="Character"):
     """
     Commands for Character Creation, Management, and Stat Rolling.
     """
+    char_group = app_commands.Group(name="char", description="Character creation and management commands")
     
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -203,5 +206,138 @@ class CharacterCog(commands.Cog, name="Character"):
     async def delete_char(self, ctx: commands.Context, *, name: str = None):
         await handle_delete_char(self, ctx, name=name)
 
+    # ==========================
+    # SLASH COMMANDS & AUTOCOMPLETE
+    # ==========================
+
+    async def _user_characters_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        try:
+            characters = await load_json("characters.json")
+            uid = str(interaction.user.id)
+            user_chars = characters.get(uid, [])
+            choices = []
+            curr_lower = current.lower().strip()
+            for c in user_chars:
+                cname = c.get("name", "")
+                if not curr_lower or curr_lower in cname.lower():
+                    race = c.get("race", "")
+                    char_class = c.get("class", "Adventurer")
+                    label = f"{cname} ({race} {char_class})".strip()
+                    if len(label) > 100:
+                        label = label[:97] + "..."
+                    choices.append(app_commands.Choice(name=label, value=cname))
+                    if len(choices) >= 25:
+                        break
+            return choices
+        except Exception as e:
+            logger.error(f"Error in user character autocomplete: {e}")
+            return []
+
+    async def _classes_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        try:
+            classes = await load_json("classes.json")
+            choices = []
+            curr_lower = current.lower().strip()
+            for cname in classes.keys():
+                if not curr_lower or curr_lower in cname.lower():
+                    choices.append(app_commands.Choice(name=cname[:100], value=cname[:100]))
+                    if len(choices) >= 25:
+                        break
+            return choices
+        except Exception:
+            return []
+
+    @char_group.command(name="create", description="Start creating a new character for a race")
+    @app_commands.describe(race="The race of your character (e.g. Human, Elf, Dwarf)")
+    async def slash_create(self, interaction: discord.Interaction, race: str):
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await handle_create(self, adapter, race_name=race)
+
+    @slash_create.autocomplete("race")
+    async def slash_create_race_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        try:
+            races = await load_json("races.json")
+            choices = []
+            curr_lower = current.lower().strip()
+            for rname, rdata in races.items():
+                if not curr_lower or curr_lower in rname.lower():
+                    rp = rdata.get("Race Points", 10)
+                    mods = rdata.get("modifiers", {})
+                    flex = rdata.get("flexible_stat", 0)
+                    parts = []
+                    for k, v in mods.items():
+                        sign = "+" if v > 0 else ""
+                        parts.append(f"{sign}{v} {k}")
+                    if flex > 0:
+                        parts.append(f"+{flex} Any")
+                    m_str = ", ".join(parts) if parts else "No Mod"
+                    label = f"{rname} (RP {rp} | {m_str})"
+                    if len(label) > 100:
+                        label = label[:97] + "..."
+                    choices.append(app_commands.Choice(name=label, value=rname))
+                    if len(choices) >= 25:
+                        break
+            return choices
+        except Exception as e:
+            logger.error(f"Error in race autocomplete: {e}")
+            return []
+
+    @char_group.command(name="info", description="View detailed character sheet and statistics")
+    @app_commands.describe(name="Name of your saved character")
+    async def slash_info(self, interaction: discord.Interaction, name: Optional[str] = None):
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await handle_info(self, adapter, name=name)
+
+    @slash_info.autocomplete("name")
+    async def slash_info_name_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._user_characters_autocomplete(interaction, current)
+
+    @char_group.command(name="list", description="List all characters you have created")
+    async def slash_list(self, interaction: discord.Interaction):
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await handle_list_chars(self, adapter)
+
+    @char_group.command(name="edit_class", description="Change a saved character's class")
+    @app_commands.describe(name="Name of your character", new_class="The new class to assign")
+    async def slash_edit_class(self, interaction: discord.Interaction, name: str, new_class: str):
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await handle_edit_class(self, adapter, name, new_class)
+
+    @slash_edit_class.autocomplete("name")
+    async def slash_edit_class_name_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._user_characters_autocomplete(interaction, current)
+
+    @slash_edit_class.autocomplete("new_class")
+    async def slash_edit_class_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._classes_autocomplete(interaction, current)
+
+    @char_group.command(name="edit_stat", description="Modify a specific stat for a saved character")
+    @app_commands.describe(name="Name of your character", stat="The attribute to modify", new_value="The new score value")
+    @app_commands.choices(stat=[
+        app_commands.Choice(name="Strength (STR)", value="STR"),
+        app_commands.Choice(name="Dexterity (DEX)", value="DEX"),
+        app_commands.Choice(name="Constitution (CON)", value="CON"),
+        app_commands.Choice(name="Intelligence (INT)", value="INT"),
+        app_commands.Choice(name="Wisdom (WIS)", value="WIS"),
+        app_commands.Choice(name="Charisma (CHA)", value="CHA"),
+    ])
+    async def slash_edit_stat(self, interaction: discord.Interaction, name: str, stat: str, new_value: int):
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await handle_edit_stat(self, adapter, name, stat, str(new_value))
+
+    @slash_edit_stat.autocomplete("name")
+    async def slash_edit_stat_name_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._user_characters_autocomplete(interaction, current)
+
+    @char_group.command(name="delete", description="Delete a saved character permanently")
+    @app_commands.describe(name="Name of your character to delete")
+    async def slash_delete(self, interaction: discord.Interaction, name: str):
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await handle_delete_char(self, adapter, name=name)
+
+    @slash_delete.autocomplete("name")
+    async def slash_delete_name_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._user_characters_autocomplete(interaction, current)
+
 async def setup(bot):
-    await bot.add_cog(CharacterCog(bot))
+    await bot.add_cog(CharacterCog(bot))

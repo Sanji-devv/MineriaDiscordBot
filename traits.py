@@ -1,4 +1,5 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 import json
 import random
@@ -7,6 +8,7 @@ from pathlib import Path
 import re
 from typing import Dict, List, Any, Optional
 from log_handler import logger
+from char_utils import InteractionContextAdapter, load_json
 
 # Pre-compiled regular expressions for race matching
 NORM_RE = re.compile(r'[\s_\-]+')
@@ -520,5 +522,81 @@ class Traits(commands.Cog):
         except (discord.Forbidden, discord.NotFound, discord.HTTPException):
             pass
 
+    # ==========================
+    # SLASH COMMAND & AUTOCOMPLETE
+    # ==========================
+
+    async def _trait_categories_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        standard = ["Combat", "Magic", "Faith", "Social", "Race", "Campaign", "Equipment", "Regional", "Religion", "Family", "Mount"]
+        curr_lower = current.lower().strip()
+        choices = []
+        for cat in standard:
+            if not curr_lower or curr_lower in cat.lower():
+                choices.append(app_commands.Choice(name=cat, value=cat.lower()))
+        for cat in sorted(self.traits_by_cat.keys()):
+            cap_cat = cat.capitalize()
+            if cap_cat not in standard:
+                if not curr_lower or curr_lower in cat.lower():
+                    choices.append(app_commands.Choice(name=cap_cat, value=cat.lower()))
+                    if len(choices) >= 25:
+                        break
+        return choices[:25]
+
+    async def _trait_race_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        try:
+            races = await load_json("races.json")
+            curr_lower = current.lower().strip()
+            choices = []
+            for rname in races.keys():
+                if not curr_lower or curr_lower in rname.lower():
+                    choices.append(app_commands.Choice(name=rname[:100], value=rname[:100]))
+                    if len(choices) >= 25:
+                        break
+            return choices
+        except Exception:
+            return []
+
+    @app_commands.command(name="trait", description="Roll traits for specified categories")
+    @app_commands.describe(
+        category1="First trait category (e.g. Combat, Magic, Social)",
+        category2="Second trait category",
+        category3="Third trait category",
+        race="Specify race if rolling a Race trait (e.g. Human, Elf)"
+    )
+    async def slash_trait(
+        self,
+        interaction: discord.Interaction,
+        category1: str,
+        category2: Optional[str] = None,
+        category3: Optional[str] = None,
+        race: Optional[str] = None
+    ):
+        args = [category1]
+        if category2:
+            args.append(category2)
+        if category3:
+            args.append(category3)
+        if race:
+            args.append(f"race({race})")
+
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await self.trait(adapter, *args)
+
+    @slash_trait.autocomplete("category1")
+    async def slash_trait_cat1_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._trait_categories_autocomplete(interaction, current)
+
+    @slash_trait.autocomplete("category2")
+    async def slash_trait_cat2_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._trait_categories_autocomplete(interaction, current)
+
+    @slash_trait.autocomplete("category3")
+    async def slash_trait_cat3_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._trait_categories_autocomplete(interaction, current)
+
+    @slash_trait.autocomplete("race")
+    async def slash_trait_race_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._trait_race_autocomplete(interaction, current)
+
 async def setup(bot):
-    await bot.add_cog(Traits(bot))
+    await bot.add_cog(Traits(bot))

@@ -1,4 +1,5 @@
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 import os
 import asyncio
@@ -10,6 +11,8 @@ from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 from dotenv import load_dotenv
 from log_handler import logger
+from char_utils import InteractionContextAdapter, load_json
+
 
 # Load environment variables
 load_dotenv(Path(__file__).parent / ".env")
@@ -356,8 +359,71 @@ class KiaCog(commands.Cog, name="KIA"):
         """
         await self.fetch_and_calculate_xp(ctx, char_name, 0.9, "🕵️ MIA XP Calculation", discord.Color.gold())
 
+    # ==========================
+    # SLASH COMMANDS & AUTOCOMPLETE
+    # ==========================
+
+    async def _kia_character_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        choices = []
+        curr_lower = current.lower().strip()
+        seen_names = set()
+
+        # 1. User's saved characters
+        try:
+            characters = await load_json("characters.json")
+            uid = str(interaction.user.id)
+            user_chars = characters.get(uid, [])
+            for c in user_chars:
+                name = c.get("name", "")
+                if name and (not curr_lower or curr_lower in name.lower()):
+                    seen_names.add(name.lower())
+                    label = f"{name} (Saved Character)"
+                    if len(label) > 100:
+                        label = label[:97] + "..."
+                    choices.append(app_commands.Choice(name=label, value=name))
+                    if len(choices) >= 25:
+                        return choices
+        except Exception:
+            pass
+
+        # 2. Characters from Google Sheet cache
+        if self._cache_data:
+            for char in self._cache_data:
+                raw_name = char.get("raw_name", "")
+                if raw_name and raw_name.lower() not in seen_names:
+                    if not curr_lower or curr_lower in char.get("norm_name", "") or curr_lower in raw_name.lower():
+                        seen_names.add(raw_name.lower())
+                        label = f"{raw_name} (Campaign Sheet)"
+                        if len(label) > 100:
+                            label = label[:97] + "..."
+                        choices.append(app_commands.Choice(name=label, value=raw_name))
+                        if len(choices) >= 25:
+                            break
+        return choices
+
+    @app_commands.command(name="kia", description="Calculate KIA starting XP from Google Sheet or saved character")
+    @app_commands.describe(char_name="Name of the fallen character")
+    async def slash_kia(self, interaction: discord.Interaction, char_name: str):
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await self.fetch_and_calculate_xp(adapter, char_name, 0.5, "💀 KIA XP Calculation", discord.Color.dark_red())
+
+    @slash_kia.autocomplete("char_name")
+    async def slash_kia_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._kia_character_autocomplete(interaction, current)
+
+    @app_commands.command(name="mia", description="Calculate MIA starting XP from Google Sheet or saved character")
+    @app_commands.describe(char_name="Name of the missing character")
+    async def slash_mia(self, interaction: discord.Interaction, char_name: str):
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await self.fetch_and_calculate_xp(adapter, char_name, 0.9, "🕵️ MIA XP Calculation", discord.Color.gold())
+
+    @slash_mia.autocomplete("char_name")
+    async def slash_mia_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await self._kia_character_autocomplete(interaction, current)
+
 
 async def setup(bot):
     await bot.add_cog(KiaCog(bot))
+
 
 

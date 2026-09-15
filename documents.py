@@ -1,10 +1,13 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 from pathlib import Path
 import difflib
 import asyncio
 import time
-from typing import List, Tuple
+from typing import List, Tuple, Optional
+from char_utils import InteractionContextAdapter
+
 
 
 class Documents(commands.Cog):
@@ -213,8 +216,58 @@ class Documents(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Error uploading map: {e}")
 
+    # ==========================
+    # SLASH COMMANDS & AUTOCOMPLETE
+    # ==========================
+
+    @app_commands.command(name="doc", description="Download a campaign PDF or list available documents")
+    @app_commands.describe(title="Name of the PDF document to view or download")
+    async def slash_doc(self, interaction: discord.Interaction, title: Optional[str] = None):
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        if not title or title.lower().strip() == "list":
+            await self._list_docs(adapter)
+        else:
+            await self._send_doc(adapter, title)
+
+    @slash_doc.autocomplete("title")
+    async def slash_doc_title_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        docs = await self._get_docs()
+        curr_lower = current.lower().strip()
+        choices = []
+        for f, size in docs:
+            if not curr_lower or curr_lower in f.name.lower():
+                label = f"{f.name} ({size:.2f} MB)"
+                if len(label) > 100:
+                    label = label[:97] + "..."
+                choices.append(app_commands.Choice(name=label, value=f.name))
+                if len(choices) >= 25:
+                    break
+        return choices
+
+    @app_commands.command(name="map", description="Display a tactical battlemap or list available maps")
+    @app_commands.describe(name="Name of the map to display")
+    async def slash_map(self, interaction: discord.Interaction, name: Optional[str] = None):
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        if not name or name.lower().strip() == "list":
+            await self._list_maps(adapter)
+        else:
+            await self._send_map(adapter, name)
+
+    @slash_map.autocomplete("name")
+    async def slash_map_name_auto(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        maps = await self._get_maps()
+        curr_lower = current.lower().strip()
+        choices = []
+        for f in maps:
+            if not curr_lower or curr_lower in f.stem.lower():
+                choices.append(app_commands.Choice(name=f.stem[:100], value=f.stem[:100]))
+                if len(choices) >= 25:
+                    break
+        return choices
+
 
 async def setup(bot):
     await bot.add_cog(Documents(bot))
+
 
 

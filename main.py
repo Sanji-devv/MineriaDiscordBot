@@ -42,7 +42,15 @@ class MineriaBot(commands.AutoShardedBot):
         if loaded:
             logger.info(f"Loaded {len(loaded)} extensions: {', '.join(loaded)}")
 
+        # Automatically sync application commands globally
+        try:
+            synced = await self.tree.sync()
+            logger.info(f"Synced {len(synced)} application commands globally.")
+        except Exception as e:
+            logger.warning(f"Application command sync skipped or failed during startup: {e}")
+
     async def on_ready(self):
+
         logger.info(f"{self.user.name} is online! servers: {len(self.guilds)}")
 
 if __name__ == "__main__":

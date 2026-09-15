@@ -1,4 +1,5 @@
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 from log_handler import logger
 
@@ -42,5 +43,17 @@ class Admin(commands.Cog):
         except Exception as e:
             await msg.edit(content=f"❌ Sync failed: {e}")
 
+    @app_commands.command(name="sync", description="Sync slash commands globally (Owner only)")
+    async def slash_sync(self, interaction: discord.Interaction):
+        if not await self.bot.is_owner(interaction.user):
+            return await interaction.response.send_message("❌ This command is restricted to the bot owner.", ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        try:
+            synced = await self.bot.tree.sync()
+            await interaction.followup.send(f"✅ Synced **{len(synced)}** application commands globally.")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Sync failed: {e}")
+
 async def setup(bot):
     await bot.add_cog(Admin(bot))
+
