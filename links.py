@@ -1,46 +1,77 @@
+"""
+Mineria Discord Bot - Wiki & Resource Links
+===========================================
+Provides fast reference links to the official Mineria RPG Wiki, character templates,
+and campaign creation guidelines.
+"""
+
+from typing import Optional
 import discord
+from discord import app_commands
 from discord.ext import commands
 
-class Links(commands.Cog):
-    def __init__(self, bot):
+
+class Links(commands.Cog, name="Links"):
+    """Cog providing quick navigation links to Mineria Wiki resources."""
+
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @commands.command(name="wiki", aliases=["link"])
-    async def links(self, ctx):
-        """Displays important Mineria Wiki links."""
+    def _build_wiki_embed(self) -> discord.Embed:
+        """Constructs the standard rich embed with wiki reference links."""
         embed = discord.Embed(
-            title="📚 Mineria Wiki Links",
-            description="Official resources for Mineria RPG",
+            title="Mineria Wiki Links",
+            description="Official reference resources and guides for the Mineria RPG Campaign.",
             color=discord.Color.gold()
         )
-        
+
+        # 1. Main Wiki portal
         embed.add_field(
-            name="🏠 Wiki Homepage",
+            name="Wiki Homepage",
             value="[Mineria Wiki](https://mineria.fandom.com/tr/wiki/Mineria_Wiki)",
             inline=False
         )
-        
+
+        # 2. Official character sheet template
         embed.add_field(
-            name="📝 Character Page Guide",
+            name="Character Page Guide",
             value="[Character Sheet Template](https://mineria.fandom.com/tr/wiki/TaslakKarakterKagidi?so=search)",
             inline=False
         )
 
+        # 3. New character creation guidelines
         embed.add_field(
-            name="🛠️ Character Creation",
+            name="Character Creation",
             value="[Guide: Character Creation](https://mineria.fandom.com/tr/wiki/Karakter_yaratmak)",
             inline=False
         )
-        
+
+        # Set official wiki thumbnail and bot footer
+        embed.set_thumbnail(
+            url="https://static.wikia.nocookie.net/mineria/images/e/e6/Site-logo.png/revision/latest?cb=20230101000000"
+        )
+
         avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
         if avatar_url:
-            embed.set_footer(text="Mineria RPG • Wiki", icon_url=avatar_url)
+            embed.set_footer(text="Mineria RPG • Wiki Reference", icon_url=avatar_url)
         else:
-            embed.set_footer(text="Mineria RPG • Wiki")
-            
-        embed.set_thumbnail(url="https://static.wikia.nocookie.net/mineria/images/e/e6/Site-logo.png/revision/latest?cb=20230101000000")
-        
+            embed.set_footer(text="Mineria RPG • Wiki Reference")
+
+        return embed
+
+    @commands.command(name="wiki", aliases=["link"])
+    async def links(self, ctx: commands.Context) -> None:
+        """Displays official Mineria Wiki navigation links."""
+        embed = self._build_wiki_embed()
         await ctx.send(embed=embed)
 
-async def setup(bot):
-    await bot.add_cog(Links(bot))
+    @app_commands.command(name="wiki", description="Display official Mineria Wiki and reference links")
+    async def slash_wiki(self, interaction: discord.Interaction) -> None:
+        """Slash command variant for quick access to wiki links."""
+        embed = self._build_wiki_embed()
+        await interaction.response.send_message(embed=embed)
+
+
+async def setup(bot: commands.Bot) -> None:
+    """Extension entry point for loading the Links Cog."""
+    await bot.add_cog(Links(bot))

@@ -35,14 +35,14 @@ The bot listens to the following prefixes:
 
 ## 🌟 Core Modules & Key Features
 
-### 1. 🧙‍♂️ Interactive Character Wizard (`character.py`, `char_creation.py`, `char_management.py`)
+### 1. 🧙‍♂️ Interactive Character Wizard (`character.py`)
 - **Race Points Budgeting:** Point budget automatically adapts to racial power (`Budget = 41 - Race Points`, minimum floor of 18).
 - **Stat Distribution Engine (`!char dr`):** Distribute dice counts across the 6 core stats (STR, DEX, CON, INT, WIS, CHA). The bot rolls $N$ d6 for each stat, drops the lowest dice (`~~1~~`), sums the highest 3, and applies racial modifiers.
 - **Flexible Racial Bonus UI:** Interactive buttons (`+2 STR`, `+2 DEX`, etc.) appear for races with flexible bonuses, applying changes in real time.
 - **Class Recommendation Engine:** Evaluates rolled stat profiles against class archetypes to suggest optimal class options (toggleable via `!rec`).
 - **Character Persistence:** Save (`!char save`), list (`!char list`), inspect (`!char info`), rename, edit stats/classes, or delete saved character sheets stored atomically in `datas/characters.json`.
 
-### 2. 📊 Live Campaign XP & Player Tracking (`utility.py`, `new_character.py`)
+### 2. 📊 Live Campaign XP & Player Tracking (`utility.py`)
 - Fetches live data from the campaign's Google Sheet using asynchronous HTTP requests with TTL caching.
 - Computes replacement character starting XP and current levels via `!kia <name>`, `!retire <name>`, `!mia <name>`, and `!newchar <name>`.
 - Detects roster rule violations (e.g., "1 Ranked + 1 Clerk" rule) via `!dup` / `!d`.
