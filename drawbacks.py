@@ -1,21 +1,11 @@
-"""
-Mineria Discord Bot - Character Drawbacks Module
-================================================
-Provides random character drawbacks from the campaign rulebook to add flavor,
-challenges, and narrative depth during character creation.
-"""
-
 import json
 import random
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-
 import discord
 from discord import app_commands
 from discord.ext import commands
-
 from log_handler import logger
-
 
 class Drawbacks(commands.Cog, name="Drawbacks"):
     """Cog for drawing random drawbacks from the Mineria rulebook."""

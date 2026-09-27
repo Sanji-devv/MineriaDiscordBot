@@ -1,20 +1,10 @@
-"""
-Mineria Discord Bot - Administrative Suite & Command Guard
-==========================================================
-Provides dynamic command restriction (Command Guard), permission management,
-slash command tree synchronization, and Discord presence management.
-Persists all configuration atomically into the root .env file.
-"""
-
 import re
 import asyncio
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple, Union, Set
-
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
-
 from log_handler import logger
 
 # =============================================================================
@@ -31,8 +21,8 @@ DEVELOPER_ID = 388683129658933259
 PROTECTED_COMMANDS: Set[str] = {
     "cmd", "sync", "all",
     "d", "dup", "checkdup",
-    "gm", "player", "oyuncu", "gmcheck", "pinfo",
-    "best", "top", "mostmissions", "gorevler", "bestchar"
+    "gm", "player", "gmcheck", "pinfo",
+    "best", "top", "mostmissions", "bestchar"
 }
 
 _SETTINGS_CACHE: Optional[Dict[str, Any]] = None
@@ -93,21 +83,21 @@ async def get_command_settings(force_reload: bool = False) -> Dict[str, Any]:
     if ENV_FILE.exists():
         try:
             content = await asyncio.to_thread(ENV_FILE.read_text, encoding="utf-8")
-            for line in content.splitlines():
-                line = line.strip()
-                if not line or line.startswith("#"):
+            for raw_line in content.splitlines():
+                stripped_line = raw_line.strip()
+                if not stripped_line or stripped_line.startswith("#"):
                     continue
-                if "=" in line:
-                    key, val = line.split("=", 1)
+                if "=" in stripped_line:
+                    key, val = stripped_line.split("=", 1)
                     key = key.strip()
                     val = val.strip().strip("\"'")
                     if key == "DISABLED_COMMANDS":
                         disabled_list = [c.strip().lower() for c in val.split(",") if c.strip()]
                     elif key == "ALLOWED_USERS":
-                        for uid in val.split(","):
-                            uid = uid.strip()
-                            if uid.isdigit():
-                                allowed_users.append(int(uid))
+                        for raw_uid in val.split(","):
+                            u_str = raw_uid.strip()
+                            if u_str.isdigit():
+                                allowed_users.append(int(u_str))
         except Exception as exc:
             logger.error(f"Error reading .env for Command Guard settings: {exc}")
 
@@ -456,7 +446,8 @@ class Admin(commands.Cog, name="Admin"):
 
     @presence_task.before_loop
     async def before_presence_task(self) -> None:
-        await self.bot.wait_until_ready()
+        while not self.bot.is_ready():
+            await asyncio.sleep(1)
 
     # --- Sync Commands ---
 

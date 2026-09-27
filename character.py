@@ -1,30 +1,16 @@
-"""
-Mineria Discord Bot - Character Creation & Roster Management Engine
-===================================================================
-A unified, high-performance module providing:
-1. Concurrency-safe JSON file storage with AsyncReentrantLock and tempfile atomic replacement.
-2. Character creation session engine (!char create <race>).
-3. Dice point distribution and stat rolling (!char dr <stats>).
-4. Interactive racial bonus selection (BonusSelectView).
-5. Character finalizing, saving, and persistence (!char save <name>).
-6. Full character sheet viewer, roster listing, and modification suite (!char info, !char list, !char edit, !char rename, !char delete).
-7. Slash application command tree integration with dynamic autocompletion.
-"""
-
 import re
 import copy
 import time
 import json
 import random
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple, Union, Set
-
+from typing import Dict, Any, List, Optional, Tuple, Union
 import discord
 from discord import app_commands
 from discord.ext import commands
 import aiofiles
-
 from log_handler import logger
 from admin import DEVELOPER_ID, is_user_authorized
 
@@ -189,8 +175,23 @@ class InteractionContextAdapter:
             await self.interaction.response.defer(ephemeral=ephemeral)
 
     async def send(self, *args, **kwargs) -> Optional[discord.Message]:
+        delete_after = kwargs.get("delete_after")
         if self.interaction.response.is_done():
-            return await self.interaction.followup.send(*args, **kwargs)
+            followup_kwargs = kwargs.copy()
+            if "delete_after" in followup_kwargs:
+                del followup_kwargs["delete_after"]
+            if delete_after:
+                followup_kwargs["wait"] = True
+            msg = await self.interaction.followup.send(*args, **followup_kwargs)
+            if delete_after and msg:
+                async def _delayed_delete():
+                    try:
+                        await asyncio.sleep(delete_after)
+                        await msg.delete()
+                    except Exception:
+                        pass
+                asyncio.create_task(_delayed_delete())
+            return msg
         else:
             await self.interaction.response.send_message(*args, **kwargs)
             try:
@@ -200,13 +201,21 @@ class InteractionContextAdapter:
 
     def typing(self):
         import contextlib
-        if self.channel and hasattr(self.channel, "typing"):
-            return self.channel.typing()
 
         @contextlib.asynccontextmanager
-        async def _noop():
-            yield
-        return _noop()
+        async def _typing_manager():
+            if not self.interaction.response.is_done():
+                try:
+                    await self.interaction.response.defer()
+                except Exception:
+                    pass
+            if self.channel and hasattr(self.channel, "typing"):
+                async with self.channel.typing():
+                    yield
+            else:
+                yield
+
+        return _typing_manager()
 
 
 # =============================================================================
@@ -470,7 +479,7 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
 
     # Handle 6 sequential numbers shortcut (e.g. "6 6 6 6 6 10" -> STR:6, DEX:6, etc.)
     if len(flat_args) == 6 and all(a.isdigit() for a in flat_args):
-        stats_to_set = dict(zip(keys, [int(a) for a in flat_args]))
+        stats_to_set = dict(zip(keys, [int(a) for a in flat_args], strict=True))
     # Handle key-value pairs (e.g. "STR 10 DEX 6 ...")
     elif len(flat_args) == 12:
         for i in range(0, 12, 2):
@@ -649,7 +658,14 @@ async def handle_save_char(cog: Any, ctx: Any, *, name: Optional[str] = None) ->
             await ctx.send(f"You already have a character named **{name}**.")
             return
 
-        created_time = str(ctx.message.created_at) if hasattr(ctx, "message") and ctx.message else ""
+        created_time = ""
+        if hasattr(ctx, "message") and ctx.message:
+            created_time = str(ctx.message.created_at)
+        elif hasattr(ctx, "interaction") and ctx.interaction:
+            created_time = str(ctx.interaction.created_at)
+        else:
+            created_time = str(datetime.now(timezone.utc))
+
         new_char = {
             "name": name,
             "race": creation["race_name"],
@@ -1081,7 +1097,6 @@ async def handle_delete_char(cog: Any, ctx: Any, *, name: Optional[str] = None) 
         color=discord.Color.red()
     )
     await ctx.send(embed=embed)
-    await ctx.send(embed=embed)
 
 
 # =============================================================================
@@ -1429,6 +1444,7 @@ class CharacterCog(commands.Cog, name="Character"):
     async def slash_char_kia(self, interaction: discord.Interaction, char_name: str) -> None:
         cog = self.bot.get_cog("Utility")
         if cog:
+            await interaction.response.defer()
             adapter = InteractionContextAdapter(interaction, self.bot)
             await cog.fetch_and_calculate_xp(adapter, char_name, 0.5, "KIA XP", discord.Color.dark_red())
         else:
@@ -1448,6 +1464,7 @@ class CharacterCog(commands.Cog, name="Character"):
     async def slash_char_mia(self, interaction: discord.Interaction, char_name: str) -> None:
         cog = self.bot.get_cog("Utility")
         if cog:
+            await interaction.response.defer()
             adapter = InteractionContextAdapter(interaction, self.bot)
             await cog.fetch_and_calculate_xp(adapter, char_name, 0.9, "MIA XP", discord.Color.gold())
         else:

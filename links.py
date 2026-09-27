@@ -1,15 +1,6 @@
-"""
-Mineria Discord Bot - Wiki & Resource Links
-===========================================
-Provides fast reference links to the official Mineria RPG Wiki, character templates,
-and campaign creation guidelines.
-"""
-
-from typing import Optional
 import discord
 from discord import app_commands
 from discord.ext import commands
-
 
 class Links(commands.Cog, name="Links"):
     """Cog providing quick navigation links to Mineria Wiki resources."""

@@ -1,23 +1,12 @@
-"""
-Mineria Discord Bot - Documents & Tactical Maps Module
-======================================================
-Provides interactive browsing, fuzzy matching, and secure delivery of campaign
-PDF rulebooks, form templates, and tactical battlemaps stored in mineria_files/.
-Includes TTL caching to minimize disk I/O and strict path traversal validation.
-"""
-
 import time
 import asyncio
 import difflib
 from pathlib import Path
 from typing import List, Tuple, Optional
-
 import discord
 from discord import app_commands
 from discord.ext import commands
-
 from character import InteractionContextAdapter
-
 
 class Documents(commands.Cog, name="Documents"):
     """Cog handling campaign documents and tactical battlemaps."""
@@ -268,6 +257,7 @@ class Documents(commands.Cog, name="Documents"):
     @app_commands.describe(title="Name of the PDF document to view or download")
     async def slash_doc(self, interaction: discord.Interaction, title: Optional[str] = None) -> None:
         """Slash command for accessing documents with autocomplete."""
+        await interaction.response.defer()
         adapter = InteractionContextAdapter(interaction, self.bot)
         if not title or title.lower().strip() == "list":
             await self._list_docs(adapter)
@@ -298,6 +288,7 @@ class Documents(commands.Cog, name="Documents"):
     @app_commands.describe(name="Name of the battlemap to display")
     async def slash_map(self, interaction: discord.Interaction, name: Optional[str] = None) -> None:
         """Slash command for displaying maps with autocomplete."""
+        await interaction.response.defer()
         adapter = InteractionContextAdapter(interaction, self.bot)
         if not name or name.lower().strip() == "list":
             await self._list_maps(adapter)

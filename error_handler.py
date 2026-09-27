@@ -1,19 +1,8 @@
-"""
-Mineria Discord Bot - Global Error Handler
-==========================================
-Centralized exception handling for Discord commands. Catches missing arguments,
-cooldown limits, permission checks, Command Guard restrictions, and unforeseen runtime errors.
-"""
-
 import traceback
-from typing import Optional
-
 import discord
 from discord.ext import commands
-
 from log_handler import logger
 from admin import CommandDisabledError
-
 
 class ErrorHandler(commands.Cog, name="ErrorHandler"):
     """Global error handling Cog for commands executed across text channels and DMs."""
@@ -60,7 +49,7 @@ class ErrorHandler(commands.Cog, name="ErrorHandler"):
                 await ctx.send(f"Bot Permissions Missing: The bot requires the following permissions in this channel: {missing}")
 
             # 7. Handle Command Guard restrictions (commands disabled by developer/admin)
-            elif isinstance(error, CommandDisabledError):
+            elif isinstance(error, CommandDisabledError) or getattr(error, "original", None).__class__.__name__ == "CommandDisabledError":
                 notice = str(error).strip() or "This command is currently disabled by system administrators."
                 await ctx.send(notice)
 

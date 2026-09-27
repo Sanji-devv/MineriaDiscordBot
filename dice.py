@@ -1,25 +1,9 @@
-"""
-Mineria Dice Engine
-===================
-High-performance, feature-rich dice roller tailored for Pathfinder 1e TTRPG gameplay.
-
-Capabilities:
-- Shorthand single-number rolls (e.g. "20" -> 1d20)
-- Standard dice notation (e.g. "1d20", "2d6", "3d8+4")
-- Drop-lowest / Keep-highest notation (e.g. "4d6k3" or "4d6kh3")
-- Multi-pool arithmetic (e.g. "1d8 + 2d6 - 2")
-- Comma-separated multi-rolls (e.g. "d20, d6+2, 4d6k3")
-- Visual Markdown formatting: kept dice bolded (**6**), dropped dice struck through (~~1~~)
-"""
-
 import random
 import re
 import discord
 from discord import app_commands
 from discord.ext import commands
-from typing import List, Dict, Any, Optional, Tuple, Union
-from log_handler import logger
-
+from typing import List, Any, Optional, Tuple, Union
 
 # =============================================================================
 # DATA STRUCTURES & TYPE MODELS

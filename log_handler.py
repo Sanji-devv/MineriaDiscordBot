@@ -1,17 +1,6 @@
-"""
-Mineria Discord Bot - Log Handler Module
-========================================
-Configures project-wide structured logging to console and disk (logs/mineria.log),
-and provides real-time audit logging for command invocations and execution failures.
-"""
-
 import logging
 from pathlib import Path
-from typing import Optional
-
-import discord
 from discord.ext import commands
-
 
 def setup_logging() -> logging.Logger:
     """

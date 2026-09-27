@@ -1,16 +1,3 @@
-"""
-Mineria Discord Bot - Utility & Campaign Operations Module
-==========================================================
-Provides essential campaign management tools:
-1. XP progression and level calculations based on campaign milestones.
-2. 4-Stage fuzzy character name matching (exact, substring, token-set, difflib).
-3. Google Sheet player roster synchronization with intelligent TTL caching.
-4. GM session tracking and player history (!gm, /gm).
-5. Most missions and active character rankings (!best, /best).
-6. Duplicate player and server rank rule enforcement (!d, /d).
-7. Fallen (KIA - 50% task XP) and Missing (MIA - 90% task XP) calculators (!kia, !mia).
-"""
-
 import os
 import io
 import gc
@@ -20,14 +7,12 @@ import time
 import difflib
 import asyncio
 from pathlib import Path
-from typing import Tuple, List, Dict, Any, Optional, Union
-
+from typing import Tuple, List, Dict, Any, Optional
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands
 import aiohttp
 from dotenv import load_dotenv
-
 from log_handler import logger
 from admin import DEVELOPER_ID, is_user_authorized
 from character import InteractionContextAdapter, load_json
@@ -238,7 +223,7 @@ def find_sheet_character(
 
         c_words = norm.split()
         if len(q_words) == len(c_words) and len(q_words) > 1:
-            token_ratios = [difflib.SequenceMatcher(None, qw, cw).ratio() for qw, cw in zip(q_words, c_words)]
+            token_ratios = [difflib.SequenceMatcher(None, qw, cw).ratio() for qw, cw in zip(q_words, c_words, strict=True)]
             sim = max(sim, sum(token_ratios) / len(token_ratios))
         elif len(q_words) == 1 and len(c_words) > 1:
             best_token_sim = max(difflib.SequenceMatcher(None, q_words[0], cw).ratio() for cw in c_words)
@@ -659,8 +644,22 @@ class OneTimeCommands(commands.Cog, name="Utility"):
             f"**Player:** `{target_player}`",
             f"**Total GM Sessions:** **{total_gm_count} Session(s)**",
             f"**Total Characters:** **{total_chars}** ({len(active_list)} Active • {len(graveyard_list)} Archived)",
-            "──────────────────────────────",
         ])
+
+        if graveyard_list:
+            gy_parts = []
+            if kia_count:
+                gy_parts.append(f"{kia_count} KIA")
+            if mia_count:
+                gy_parts.append(f"{mia_count} MIA")
+            if inaktif_count:
+                gy_parts.append(f"{inaktif_count} Inactive")
+            if other_count:
+                gy_parts.append(f"{other_count} Other")
+            if gy_parts:
+                desc_lines.append(f"**Archived Status:** {', '.join(gy_parts)}")
+
+        desc_lines.append("──────────────────────────────")
 
         if gm_breakdown:
             desc_lines.append(f"**GM Session History ({len(gm_breakdown)})**")
@@ -904,7 +903,7 @@ class OneTimeCommands(commands.Cog, name="Utility"):
         force_refresh = any(arg.lower() in ("refresh", "reload", "r") for arg in args)
 
         msg = await ctx.send("Fetching XP table data...")
-        data, skipped = await self.fetch_xp_data()
+        data, skipped = await self.fetch_xp_data(force_refresh=force_refresh)
         if not data and skipped == 0:
             err_msg = "Error: Failed to fetch XP table data or sheet is empty. Please check logs."
             if msg:
@@ -1012,7 +1011,7 @@ class OneTimeCommands(commands.Cog, name="Utility"):
         if has_violations:
             embed.add_field(name="\u200b", value="─" * 30, inline=False)
             items_added = 0
-            for norm_p, (display_name, chars, reason) in violations.items():
+            for _norm_p, (display_name, chars, reason) in violations.items():
                 if items_added >= 15:
                     embed.add_field(
                         name="Other Violations",
@@ -1224,6 +1223,7 @@ class OneTimeCommands(commands.Cog, name="Utility"):
     @app_commands.command(name="kia", description="Calculate KIA starting XP from Google Sheet or saved character")
     @app_commands.describe(char_name="Name of the fallen character")
     async def slash_kia(self, interaction: discord.Interaction, char_name: str) -> None:
+        await interaction.response.defer()
         adapter = InteractionContextAdapter(interaction, self.bot)
         await self.fetch_and_calculate_xp(adapter, char_name, 0.5, "KIA XP", discord.Color.dark_red())
 
@@ -1236,6 +1236,7 @@ class OneTimeCommands(commands.Cog, name="Utility"):
     @app_commands.command(name="mia", description="Calculate MIA starting XP from Google Sheet or saved character")
     @app_commands.describe(char_name="Name of the missing character")
     async def slash_mia(self, interaction: discord.Interaction, char_name: str) -> None:
+        await interaction.response.defer()
         adapter = InteractionContextAdapter(interaction, self.bot)
         await self.fetch_and_calculate_xp(adapter, char_name, 0.9, "MIA XP", discord.Color.gold())
 

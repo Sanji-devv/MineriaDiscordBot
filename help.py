@@ -1,21 +1,11 @@
-"""
-Mineria Discord Bot - System Help Terminal
-==========================================
-Displays a beautifully formatted, categorized overview of all commands across
-core gameplay, character creation/management, and utility/administrative tools.
-Supports dedicated sub-topic guides (e.g. !help roll, !help char, !help trait, !help doc, !help admin).
-"""
-
 from datetime import datetime, timezone
 from typing import Optional, Union
 import discord
 from discord import app_commands
 from discord.ext import commands
-
 from admin import is_user_authorized
 
 ACCENT_COLOR = discord.Color.from_rgb(255, 170, 0)
-
 
 class HelpCog(commands.Cog, name="Help"):
     """Cog handling user guidance, command discovery, and interactive help documentation."""

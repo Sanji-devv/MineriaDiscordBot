@@ -1,10 +1,3 @@
-"""
-Mineria Discord Bot - Character Traits Module
-=============================================
-Provides intelligent trait drawing, category filtering, race-specific pool matching,
-and dynamic in-place message rerolls for character creation and progression.
-"""
-
 import re
 import json
 import time
@@ -12,11 +5,9 @@ import random
 import asyncio
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set, Tuple
-
 import discord
 from discord import app_commands
 from discord.ext import commands
-
 from log_handler import logger
 from character import InteractionContextAdapter, load_json
 
@@ -46,8 +37,35 @@ CATEGORY_ALIASES: Dict[str, str] = {
     "planar": "plane",
     "planes": "plane",
     "plane": "plane",
+    "dimension": "plane",
+    "dimensions": "plane",
     "crafting": "craft",
     "crafter": "craft",
+    "wild": "nature",
+    "wilderness": "nature",
+    "underworld": "underworld",
+    "crime": "underworld",
+    "criminal": "underworld",
+    "thief": "underworld",
+    "thieves": "underworld",
+    "blackmarket": "underworld",
+    "scholar": "scholar",
+    "academic": "scholar",
+    "academy": "scholar",
+    "knowledge": "scholar",
+    "lore": "scholar",
+    "occult": "occult",
+    "occults": "occult",
+    "eldritch": "occult",
+    "tactics": "tactic",
+    "tactic": "tactic",
+    "tactical": "tactic",
+    "strategy": "tactic",
+    "urban": "urban",
+    "city": "urban",
+    "cities": "urban",
+    "metropolis": "urban",
+    "town": "urban",
 }
 
 
@@ -82,8 +100,10 @@ class Traits(commands.Cog, name="Traits"):
         except Exception as exc:
             logger.error(f"Error loading traits database in thread executor: {exc}")
 
-    def _load_traits_sync(self) -> None:
+    def _load_traits_sync(self, force: bool = False) -> None:
         """Reads datas/traits.json and builds fast category lookup indices."""
+        if self.traits and not force:
+            return
         file_path = Path(__file__).parent / "datas" / "traits.json"
         if not file_path.exists():
             logger.warning("datas/traits.json not found.")
@@ -116,9 +136,14 @@ class Traits(commands.Cog, name="Traits"):
                             if other not in by_cat:
                                 by_cat[other] = []
                             by_cat[other].append(trait)
+                        elif category in ("tactic", "tactics"):
+                            other = "tactics" if category == "tactic" else "tactic"
+                            if other not in by_cat:
+                                by_cat[other] = []
+                            by_cat[other].append(trait)
 
                     # Maintain a separate index for race-specific traits
-                    if category == "race":
+                    if category == "race" or "/race-traits/" in trait.get("url", "") or any(f"({r})" in trait.get("name", "").lower() for r in ("human", "gnome", "halfling", "elf", "dwarf", "orc", "half-elf", "half-orc", "aasimar")):
                         race_list.append(trait)
 
                 self.traits_by_cat = by_cat
@@ -364,7 +389,7 @@ class Traits(commands.Cog, name="Traits"):
                 "Characters can draw **3 traits** across distinct categories during character creation.\n"
                 "Traits grant unique background bonuses, roleplay flavor, and combat or magic utility.\n\n"
                 "**Available Categories:**\n"
-                "Combat | Magic | Faith | Social | Race | Plane | Craft | Regional | Religion | Campaign | Equipment | Family | Mount"
+                "Combat | Magic | Faith | Social | Race | Plane | Craft | Nature | Underworld | Scholar | Regional | Religion | Campaign | Equipment | Family | Mount | Occult | Tactic | Urban"
             ),
             color=discord.Color.from_rgb(114, 137, 218)
         )
@@ -378,12 +403,18 @@ class Traits(commands.Cog, name="Traits"):
             ("Race", "race", "Heritage-specific traits (e.g. `race(human)`, `race(elf)`, `race(dwarf)`)"),
             ("Plane", "plane", "Planar ancestry, elemental planes, Great Beyond and adaptability"),
             ("Craft", "craft", "Alchemy, blacksmithing, artisan production and construct fabrication"),
+            ("Nature", "nature", "Wilderness survival, flora & fauna, natural biomes, weather and environmental acclimatization"),
+            ("Underworld", "underworld", "Crime, black market, smuggling, thievery, assassination, stealth, and streetwise subterfuge"),
+            ("Scholar", "scholar", "Academic research, historical archives, linguistics, archeology, planar cosmology and knowledge disciplines"),
             ("Regional", "regional", "Homeland origins, terrain acclimatization and regional folklore"),
             ("Religion", "religion", "Deity patronage, sacred tenets, temple oaths and dogma"),
             ("Campaign", "campaign", "Adventure milestones, campaign background hooks and storyline traits"),
             ("Equipment", "equipment", "Specialized arms, ancestral armor mastery and heirloom gear"),
             ("Family", "family", "Noble bloodlines, household traditions and family legacies"),
             ("Mount", "mount", "Mounted combat, loyal steeds and beast bonding synergy"),
+            ("Occult", "occult", "Spiritual entities, mediums, curses, eldritch lore and alien phenomena"),
+            ("Tactic", "tactic", "Battlefield coordination, teamwork maneuvers, leadership synergy and defensive tactics"),
+            ("Urban", "urban", "Metropolitan life, city streets, merchants, nobility and diplomatic influence"),
         ]
 
         cat_lines = []
@@ -667,14 +698,17 @@ class Traits(commands.Cog, name="Traits"):
         embed = self._build_trait_embed(results, race, errors)
         sent_message = await ctx.send(embed=embed)
 
-        self.last_rolls[ctx.author.id] = {
-            "message": sent_message,
-            "race": race,
-            "resolved_order": resolved_order,
-            "results": results,
-            "errors": errors,
-            "time": time.time()
-        }
+        user = getattr(ctx, "author", getattr(ctx, "user", None))
+        user_id = user.id if user else 0
+        if user_id:
+            self.last_rolls[user_id] = {
+                "message": sent_message,
+                "race": race,
+                "resolved_order": resolved_order,
+                "results": results,
+                "errors": errors,
+                "time": time.time()
+            }
 
     @trait.command(name="help", aliases=["h", "list"])
     async def trait_help(self, ctx: commands.Context) -> None:
@@ -833,8 +867,11 @@ class Traits(commands.Cog, name="Traits"):
         embed.set_footer(text=f"{original_footer} | {reroll_label}")
 
         try:
-            await message.edit(embed=embed)
-        except (discord.NotFound, discord.HTTPException):
+            if message and hasattr(message, "edit"):
+                await message.edit(embed=embed)
+            else:
+                await ctx.send(embed=embed)
+        except (discord.NotFound, discord.HTTPException, AttributeError):
             await _safe_delete(ctx)
             await ctx.send("Original trait message could not be edited. Please roll again with `!trait`.", delete_after=10)
             return
@@ -854,7 +891,7 @@ class Traits(commands.Cog, name="Traits"):
     ) -> List[app_commands.Choice[str]]:
         """Provides autocomplete options for standard and custom trait categories."""
         standard = [
-            "Combat", "Magic", "Faith", "Social", "Race", "Campaign", "Equipment", "Regional", "Religion", "Family", "Mount", "Plane", "Craft"
+            "Combat", "Magic", "Faith", "Social", "Race", "Campaign", "Equipment", "Regional", "Religion", "Family", "Mount", "Plane", "Craft", "Nature", "Underworld", "Scholar", "Occult", "Tactic", "Urban"
         ]
         curr_lower = current.lower().strip()
         choices = []

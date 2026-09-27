@@ -1,22 +1,21 @@
-"""
-Mineria Discord Bot - Main Entry Point
-======================================
-Initializes the Discord bot client, configures intents, dynamically loads all Cogs/extensions,
-synchronizes application slash commands, and manages robust reconnection loops with exponential backoff.
-"""
-
 import os
+import sys
 import gc
 import time
-import asyncio
 from pathlib import Path
 from typing import List
-
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-
 from log_handler import logger
+
+# Ensure console standard streams handle UTF-8 without charmap errors on Windows
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------------------
 # Environment & Configuration Setup
@@ -24,8 +23,8 @@ from log_handler import logger
 # Load environment variables from the project root .env file
 load_dotenv(Path(__file__).parent / ".env")
 
-# Primary bot token: Prioritizes DISCORD_TOKEN_TEST if present, falling back to DISCORD_TOKEN
-TOKEN = os.getenv("DISCORD_TOKEN_TEST") or os.getenv("DISCORD_TOKEN")
+# Bot Token
+TOKEN = os.getenv("DISCORD_TOKEN_TEST")
 
 # Supported command prefixes for traditional text-based commands
 PREFIXES: List[str] = ["!mineria ", "!m ", "!"]
