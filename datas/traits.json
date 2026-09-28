@@ -88,7 +88,7 @@
     {
       "name": "Clockwork Engineer (Combat)",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/clockwork-engineer-combat/",
-      "category": "Craft"
+      "category": "None"
     },
     {
       "name": "Coherent Rage",
@@ -3818,7 +3818,7 @@
     {
       "name": "Cavalry Rider",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/cavalry-rider-regional/",
-      "category": "Tactic"
+      "category": "Mount"
     },
     {
       "name": "Channel the Earth (Plane of Earth)",

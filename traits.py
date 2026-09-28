@@ -429,22 +429,38 @@ class Traits(commands.Cog, name="Traits"):
             cat_lines.append(f"> **{name}**{count_str}\n> *{desc}*")
 
         # Dynamically include any other categories found in traits.json
+        ignored_keys = {"none", "disabled", "inactive"} | set(CATEGORY_ALIASES.keys())
         for key in sorted(list(self.traits_by_cat.keys())):
-            if key not in known_keys and key not in ("planes", "crafting", "none", "disabled", "inactive"):
+            canonical = CATEGORY_ALIASES.get(key, key)
+            if key not in known_keys and canonical not in known_keys and key not in ignored_keys:
                 count = len(self.traits_by_cat[key])
                 cat_lines.append(f"> **{key.capitalize()}** `({count} traits)`\n> *Custom {key.capitalize()} category*")
+                known_keys.add(key)
+                known_keys.add(canonical)
 
-        mid = (len(cat_lines) + 1) // 2
-        embed.add_field(
-            name="AVAILABLE TRAIT CATEGORIES (1/2)",
-            value="\n\n".join(cat_lines[:mid]),
-            inline=False
-        )
-        embed.add_field(
-            name="AVAILABLE TRAIT CATEGORIES (2/2)",
-            value="\n\n".join(cat_lines[mid:]),
-            inline=False
-        )
+        # Chunk category lines dynamically to guarantee each field is well within Discord's 1024-char limit
+        chunks: List[str] = []
+        current_lines: List[str] = []
+        current_len = 0
+        for line in cat_lines:
+            line_cost = len(line) + (2 if current_lines else 0)
+            if current_lines and (current_len + line_cost > 900 or len(current_lines) >= 7):
+                chunks.append("\n\n".join(current_lines))
+                current_lines = [line]
+                current_len = len(line)
+            else:
+                current_lines.append(line)
+                current_len += line_cost
+        if current_lines:
+            chunks.append("\n\n".join(current_lines))
+
+        total_chunks = len(chunks)
+        for idx, chunk_text in enumerate(chunks, 1):
+            embed.add_field(
+                name=f"AVAILABLE TRAIT CATEGORIES ({idx}/{total_chunks})",
+                value=chunk_text,
+                inline=False
+            )
 
         embed.add_field(
             name="COMMAND USAGE & EXAMPLES",
@@ -482,7 +498,7 @@ class Traits(commands.Cog, name="Traits"):
     # SECTION 2: COMMAND PARSING & EXECUTION (!trait, !trait reroll)
     # =========================================================================
 
-    @commands.group(name="trait", aliases=["t"], invoke_without_command=True)
+    @commands.group(name="trait", aliases=["traits", "t"], invoke_without_command=True)
     async def trait(self, ctx: commands.Context, *args: str) -> None:
         """
         Draws random traits matching user-specified categories or race.
@@ -507,7 +523,7 @@ class Traits(commands.Cog, name="Traits"):
                     cleaned_tokens.append(part)
 
         # Show trait help embed if no arguments or explicit help query
-        if not cleaned_tokens or (len(cleaned_tokens) == 1 and cleaned_tokens[0].lower() in ("help", "h", "list", "categories")):
+        if not cleaned_tokens or (len(cleaned_tokens) == 1 and cleaned_tokens[0].lower() in ("help", "h", "list", "categories", "kategori", "kategoriler")):
             user = getattr(ctx, "author", getattr(ctx, "user", None))
             embed = self.build_trait_help_embed(user)
             await ctx.send(embed=embed)
@@ -710,7 +726,7 @@ class Traits(commands.Cog, name="Traits"):
                 "time": time.time()
             }
 
-    @trait.command(name="help", aliases=["h", "list"])
+    @trait.command(name="help", aliases=["h", "list", "categories", "kategori", "kategoriler"])
     async def trait_help(self, ctx: commands.Context) -> None:
         """Displays a comprehensive catalog of all trait categories and usage instructions."""
         embed = self.build_trait_help_embed(ctx.author)
@@ -901,9 +917,11 @@ class Traits(commands.Cog, name="Traits"):
             if not curr_lower or curr_lower in cat.lower() or any(curr_lower in a for a in aliases):
                 choices.append(app_commands.Choice(name=cat, value=cat.lower()))
 
+        standard_lowers = {s.lower() for s in standard}
         for cat in sorted(self.traits_by_cat.keys()):
-            cap_cat = cat.capitalize()
-            if cap_cat not in standard:
+            canonical = CATEGORY_ALIASES.get(cat, cat)
+            if canonical not in standard_lowers and cat not in standard_lowers:
+                cap_cat = cat.capitalize()
                 if not curr_lower or curr_lower in cat.lower():
                     choices.append(app_commands.Choice(name=cap_cat, value=cat.lower()))
                     if len(choices) >= 25:
@@ -995,6 +1013,12 @@ class Traits(commands.Cog, name="Traits"):
         self, interaction: discord.Interaction, current: str
     ) -> List[app_commands.Choice[str]]:
         return await self._trait_categories_autocomplete(interaction, current)
+
+    @app_commands.command(name="traits", description="List all available trait categories and system guide")
+    async def slash_traits(self, interaction: discord.Interaction) -> None:
+        """Displays a comprehensive catalog of all trait categories and usage instructions."""
+        embed = self.build_trait_help_embed(interaction.user)
+        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -24,7 +24,7 @@ if sys.platform == "win32":
 load_dotenv(Path(__file__).parent / ".env")
 
 # Bot Token
-TOKEN = os.getenv("DISCORD_TOKEN_TEST")
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 # Supported command prefixes for traditional text-based commands
 PREFIXES: List[str] = ["!mineria ", "!m ", "!"]
