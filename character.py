@@ -377,10 +377,6 @@ def generate_stat_embed(
 
 async def handle_create(cog: Any, ctx: Any, race_name: Optional[str] = None) -> None:
     """Initiates character creation session for a chosen race (Admin Only)."""
-    if ctx.author.id != DEVELOPER_ID and not await is_user_authorized(cog.bot, ctx.author):
-        await ctx.send("This command is restricted to administrators.")
-        return
-
     if not race_name:
         await ctx.send("Usage: `!char create <race>` (e.g. `!char create Human` or `!char create Half-Elf`)")
         return
@@ -1282,7 +1278,7 @@ class CharacterCog(commands.Cog, name="Character"):
             logger.error(f"Error in classes autocomplete: {exc}")
             return []
 
-    @char_group.command(name="create", description="Start creating a new character for a race (Admin Only)")
+    @char_group.command(name="create", description="Start creating a new character for a race")
     @app_commands.describe(race="The race of your character (e.g. Human, Elf, Dwarf)")
     async def slash_create(self, interaction: discord.Interaction, race: str) -> None:
         adapter = InteractionContextAdapter(interaction, self.bot)

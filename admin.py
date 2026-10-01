@@ -19,7 +19,6 @@ DEVELOPER_ID = 388683129658933259
 
 # Core administrative and emergency recovery commands that can NEVER be disabled
 PROTECTED_COMMANDS: Set[str] = {
-    "cmd", "sync", "all",
     "d", "dup", "checkdup",
     "gm", "player", "gmcheck", "pinfo",
     "best", "top", "mostmissions", "bestchar"
@@ -101,9 +100,6 @@ async def get_command_settings(force_reload: bool = False) -> Dict[str, Any]:
         except Exception as exc:
             logger.error(f"Error reading .env for Command Guard settings: {exc}")
 
-    # Fallback safety default
-    if not disabled_list:
-        disabled_list = ["char create"]
     allowed_users = sorted(list(set(allowed_users)))
 
     _SETTINGS_CACHE = {
@@ -415,10 +411,7 @@ async def global_interaction_check(interaction: discord.Interaction) -> bool:
 # =============================================================================
 
 class Admin(commands.Cog, name="Admin"):
-    """Cog handling Command Guard control, command sync, and background presence tasks."""
-
-    cmd_slash_group = app_commands.Group(name="cmd", description="Command Guard management panel")
-    all_slash_group = app_commands.Group(name="all", description="Bulk command restriction panel")
+    """Cog handling Command Guard control and background presence tasks."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -449,74 +442,45 @@ class Admin(commands.Cog, name="Admin"):
         while not self.bot.is_ready():
             await asyncio.sleep(1)
 
-    # --- Sync Commands ---
-
-    @commands.command(name="sync", hidden=True)
-    @commands.is_owner()
-    async def sync_tree(self, ctx: commands.Context) -> None:
-        """Synchronizes application slash commands with Discord gateway (Owner only)."""
-        msg = await ctx.send("Synchronizing application commands...")
-        try:
-            synced = await self.bot.tree.sync()
-            await msg.edit(content=f"Successfully synchronized **{len(synced)}** commands globally.")
-        except Exception as exc:
-            await msg.edit(content=f"Synchronization failed: {exc}")
-
-    @app_commands.command(name="sync", description="Sync slash commands globally (Owner only)")
-    async def slash_sync(self, interaction: discord.Interaction) -> None:
-        if not await self.bot.is_owner(interaction.user):
-            return await interaction.response.send_message("This command is restricted to the bot owner.", ephemeral=True)
-
-        await interaction.response.defer(ephemeral=True)
-        try:
-            synced = await self.bot.tree.sync()
-            await interaction.followup.send(f"Successfully synchronized **{len(synced)}** application commands.")
-        except Exception as exc:
-            await interaction.followup.send(f"Synchronization failed: {exc}")
 
     # =========================================================================
-    # PREFIX COMMANDS: !cmd
+    # PREFIX COMMANDS: !admin
     # =========================================================================
 
-    @commands.group(name="cmd", invoke_without_command=True)
-    async def cmd_text_group(self, ctx: commands.Context) -> None:
-        """Command Guard management panel."""
-        if not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to authorized administrators.")
+    @commands.group(name="admin", invoke_without_command=True)
+    async def admin_group(self, ctx: commands.Context) -> None:
+        """Admin panel for command management."""
+        if ctx.author.id != DEVELOPER_ID:
+            await ctx.send("This command is restricted to the developer.")
             return
 
         embed = discord.Embed(
-            title="Command Management Panel",
+            title="Admin Panel",
             description=(
-                "**Command Restriction & Enabling:**\n"
-                "`!cmd disable <command>` -> Disables the specified command.\n"
-                "`!cmd enable <command>` -> Re-enables the disabled command.\n"
-                "`!cmd list` -> Lists disabled commands and authorized users.\n\n"
-                "**Bypass Permissions:**\n"
-                "`!cmd allow <id/@user>` -> Grants bypass permission for restricted commands.\n"
-                "`!cmd disallow <id/@user>` -> Revokes bypass permission.\n\n"
-                f"*Permanent Developer ID:* `{DEVELOPER_ID}`"
+                "`!admin disable <command>` → Disables a command for all users.\n"
+                "`!admin enable <command>` → Re-enables a disabled command.\n"
+                "`!admin list` → Lists all disabled commands."
             ),
             color=discord.Color.blue()
         )
         await ctx.send(embed=embed)
 
-    @cmd_text_group.command(name="disable")
-    async def cmd_disable(self, ctx: commands.Context, *, command_name: Optional[str] = None) -> None:
+    @admin_group.command(name="disable")
+    async def admin_disable(self, ctx: commands.Context, *, command_name: Optional[str] = None) -> None:
         """Disables a command for non-authorized users."""
-        if not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to authorized administrators.")
+        if ctx.author.id != DEVELOPER_ID:
+            await ctx.send("This command is restricted to the developer.")
             return
 
         if not command_name:
-            await ctx.send("Please specify the command name to disable. E.g.: `!cmd disable char create`")
+            await ctx.send("Usage: `!admin disable <command>` (e.g. `!admin disable char create`)")
             return
 
         success, message = await disable_command(command_name)
         if success:
             norm = normalize_command_name(command_name)
             embed = discord.Embed(
-                title="Command Disabled",
+                title="Command Disabled ✅",
                 description=f"`{norm}` has been disabled.\nOnly authorized users can execute it.",
                 color=discord.Color.red()
             )
@@ -524,349 +488,45 @@ class Admin(commands.Cog, name="Admin"):
         else:
             await ctx.send(message)
 
-    @cmd_text_group.command(name="enable")
-    async def cmd_enable(self, ctx: commands.Context, *, command_name: Optional[str] = None) -> None:
+    @admin_group.command(name="enable")
+    async def admin_enable(self, ctx: commands.Context, *, command_name: Optional[str] = None) -> None:
         """Re-enables a previously disabled command."""
-        if not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to authorized administrators.")
+        if ctx.author.id != DEVELOPER_ID:
+            await ctx.send("This command is restricted to the developer.")
             return
 
         if not command_name:
-            await ctx.send("Please specify the command name to enable. E.g.: `!cmd enable char create`")
+            await ctx.send("Usage: `!admin enable <command>` (e.g. `!admin enable char create`)")
             return
 
         success, message = await enable_command(command_name)
         if success:
             norm = normalize_command_name(command_name)
             embed = discord.Embed(
-                title="Command Enabled",
-                description=f"`{norm}` has been successfully re-enabled for all users.",
+                title="Command Enabled ✅",
+                description=f"`{norm}` has been re-enabled for all users.",
                 color=discord.Color.green()
             )
             await ctx.send(embed=embed)
         else:
             await ctx.send(message)
 
-    @cmd_text_group.command(name="list")
-    async def cmd_list(self, ctx: commands.Context) -> None:
-        """Lists disabled commands and authorized users."""
-        if not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to authorized administrators.")
+    @admin_group.command(name="list")
+    async def admin_list(self, ctx: commands.Context) -> None:
+        """Lists all currently disabled commands."""
+        if ctx.author.id != DEVELOPER_ID:
+            await ctx.send("This command is restricted to the developer.")
             return
 
         settings = await get_command_settings()
         disabled = settings.get("disabled_commands", [])
-        allowed = settings.get("allowed_users", [DEVELOPER_ID])
 
-        embed = discord.Embed(title="Command Status & Permissions", color=discord.Color.gold())
+        embed = discord.Embed(title="Disabled Commands", color=discord.Color.gold())
         if disabled:
-            cmd_lines = "\n".join(f"• `{cmd}`" for cmd in disabled)
-            embed.add_field(name="Disabled Commands", value=cmd_lines, inline=False)
+            embed.description = "\n".join(f"• `{cmd}`" for cmd in disabled)
         else:
-            embed.add_field(name="Disabled Commands", value="*No commands are currently disabled.*", inline=False)
-
-        user_lines = "\n".join(f"• <@{uid}> (`{uid}`)" for uid in allowed)
-        embed.add_field(name="Bypass Authorized Users", value=user_lines or f"• `{DEVELOPER_ID}`", inline=False)
+            embed.description = "*No commands are currently disabled.*"
         await ctx.send(embed=embed)
-
-    @cmd_text_group.command(name="allow")
-    async def cmd_allow(self, ctx: commands.Context, *, user_arg: Optional[str] = None) -> None:
-        """Grants a user bypass permission for restricted commands."""
-        if not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to authorized administrators.")
-            return
-
-        uid = extract_user_id(user_arg) if user_arg else None
-        if not uid:
-            await ctx.send("Please enter a valid user ID or mention. E.g.: `!cmd allow 388683129658933259`")
-            return
-
-        success, message = await add_allowed_user(uid)
-        await ctx.send(message)
-
-    @cmd_text_group.command(name="disallow")
-    async def cmd_disallow(self, ctx: commands.Context, *, user_arg: Optional[str] = None) -> None:
-        """Revokes a user's bypass permission."""
-        if not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to authorized administrators.")
-            return
-
-        uid = extract_user_id(user_arg) if user_arg else None
-        if not uid:
-            await ctx.send("Please enter a valid user ID or mention. E.g.: `!cmd disallow 388683129658933259`")
-            return
-
-        success, message = await remove_allowed_user(uid)
-        await ctx.send(message)
-
-    # =========================================================================
-    # SLASH COMMANDS: /cmd
-    # =========================================================================
-
-    @cmd_slash_group.command(name="disable", description="Disable a command (Administrators only)")
-    @app_commands.describe(command="Command to disable (e.g. char create)")
-    async def slash_cmd_disable(self, interaction: discord.Interaction, command: str) -> None:
-        if not await is_user_authorized(self.bot, interaction.user):
-            await interaction.response.send_message("This command is restricted to authorized administrators.", ephemeral=True)
-            return
-
-        success, message = await disable_command(command)
-        if success:
-            norm = normalize_command_name(command)
-            embed = discord.Embed(
-                title="Command Disabled",
-                description=f"`{norm}` has been disabled.\nOnly authorized users can execute it.",
-                color=discord.Color.red()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
-
-    @slash_cmd_disable.autocomplete("command")
-    async def slash_cmd_disable_auto(
-        self, interaction: discord.Interaction, current: str
-    ) -> List[app_commands.Choice[str]]:
-        try:
-            settings = await get_command_settings()
-            already_disabled = set(normalize_command_name(c) for c in settings.get("disabled_commands", []))
-
-            all_cmds: Set[str] = set()
-            for cmd in self.bot.walk_commands():
-                qname = cmd.qualified_name.lower().strip()
-                first = qname.split(" ")[0]
-                if first not in PROTECTED_COMMANDS and qname not in already_disabled:
-                    all_cmds.add(qname)
-
-            curr_lower = current.lower().strip()
-            choices = []
-            for c in sorted(all_cmds):
-                if not curr_lower or curr_lower in c:
-                    choices.append(app_commands.Choice(name=c, value=c))
-                    if len(choices) >= 25:
-                        break
-            return choices
-        except Exception:
-            return []
-
-    @cmd_slash_group.command(name="enable", description="Re-enable a disabled command")
-    @app_commands.describe(command="Command to re-enable")
-    async def slash_cmd_enable(self, interaction: discord.Interaction, command: str) -> None:
-        if not await is_user_authorized(self.bot, interaction.user):
-            await interaction.response.send_message("This command is restricted to authorized administrators.", ephemeral=True)
-            return
-
-        success, message = await enable_command(command)
-        if success:
-            norm = normalize_command_name(command)
-            embed = discord.Embed(
-                title="Command Enabled",
-                description=f"`{norm}` has been successfully re-enabled for all users.",
-                color=discord.Color.green()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
-
-    @slash_cmd_enable.autocomplete("command")
-    async def slash_cmd_enable_auto(
-        self, interaction: discord.Interaction, current: str
-    ) -> List[app_commands.Choice[str]]:
-        try:
-            settings = await get_command_settings()
-            disabled = settings.get("disabled_commands", [])
-            curr_lower = current.lower().strip()
-            choices = []
-            for c in disabled:
-                if not curr_lower or curr_lower in c.lower():
-                    choices.append(app_commands.Choice(name=c, value=c))
-                    if len(choices) >= 25:
-                        break
-            return choices
-        except Exception:
-            return []
-
-    @cmd_slash_group.command(name="list", description="List disabled commands and authorized users")
-    async def slash_cmd_list(self, interaction: discord.Interaction) -> None:
-        if not await is_user_authorized(self.bot, interaction.user):
-            await interaction.response.send_message("This command is restricted to authorized administrators.", ephemeral=True)
-            return
-
-        settings = await get_command_settings()
-        disabled = settings.get("disabled_commands", [])
-        allowed = settings.get("allowed_users", [DEVELOPER_ID])
-
-        embed = discord.Embed(title="Command Status & Permissions", color=discord.Color.gold())
-        if disabled:
-            cmd_lines = "\n".join(f"• `{cmd}`" for cmd in disabled)
-            embed.add_field(name="Disabled Commands", value=cmd_lines, inline=False)
-        else:
-            embed.add_field(name="Disabled Commands", value="*No commands are currently disabled.*", inline=False)
-
-        user_lines = "\n".join(f"• <@{uid}> (`{uid}`)" for uid in allowed)
-        embed.add_field(name="Bypass Authorized Users", value=user_lines or f"• `{DEVELOPER_ID}`", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @cmd_slash_group.command(name="allow", description="Grant a user bypass permission for restricted commands")
-    @app_commands.describe(user="User to grant permission")
-    async def slash_cmd_allow(self, interaction: discord.Interaction, user: discord.User) -> None:
-        if not await is_user_authorized(self.bot, interaction.user):
-            await interaction.response.send_message("This command is restricted to authorized administrators.", ephemeral=True)
-            return
-
-        success, message = await add_allowed_user(user.id)
-        await interaction.response.send_message(message, ephemeral=True)
-
-    @cmd_slash_group.command(name="disallow", description="Revoke a user's bypass permission for restricted commands")
-    @app_commands.describe(user="User to revoke permission from")
-    async def slash_cmd_disallow(self, interaction: discord.Interaction, user: discord.User) -> None:
-        if not await is_user_authorized(self.bot, interaction.user):
-            await interaction.response.send_message("This command is restricted to authorized administrators.", ephemeral=True)
-            return
-
-        success, message = await remove_allowed_user(user.id)
-        await interaction.response.send_message(message, ephemeral=True)
-
-    # =========================================================================
-    # PREFIX COMMANDS: !all
-    # =========================================================================
-
-    @commands.group(name="all", invoke_without_command=True)
-    async def all_text_group(self, ctx: commands.Context) -> None:
-        """Shows current restricted commands status and options."""
-        await self._show_all_status(ctx)
-
-    async def _show_all_status(self, ctx: commands.Context) -> None:
-        """Renders the status embed of all currently restricted commands."""
-        if not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to authorized administrators.")
-            return
-
-        settings = await get_command_settings()
-        disabled = settings.get("disabled_commands", [])
-
-        embed = discord.Embed(title="Restricted Commands Status", color=discord.Color.gold())
-        if disabled:
-            cmd_lines = "\n".join(f"• `{c}`" for c in disabled)
-            embed.description = f"A total of **{len(disabled)}** commands are currently restricted:"
-            embed.add_field(name="Disabled Commands", value=cmd_lines, inline=False)
-            embed.set_footer(text="To enable all: !all enable | To restrict all: !all disable")
-        else:
-            embed.description = "No commands are currently restricted. All commands are active."
-            embed.set_footer(text="To restrict all: !all disable")
-
-        await ctx.send(embed=embed)
-
-    @all_text_group.command(name="disable")
-    async def all_disable(self, ctx: commands.Context) -> None:
-        """Disables all manageable commands for non-authorized users."""
-        if not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to authorized administrators.")
-            return
-
-        success, restricted_cmds, message = await disable_all_commands(self.bot)
-        if success:
-            embed = discord.Embed(
-                title="All Commands Restricted",
-                description=f"A total of **{len(restricted_cmds)}** commands were successfully disabled.\nOnly authorized users can execute them.",
-                color=discord.Color.red()
-            )
-            cmd_lines = "\n".join(f"• `{c}`" for c in restricted_cmds)
-            embed.add_field(name="Restricted Commands", value=cmd_lines, inline=False)
-            embed.set_footer(text="To re-enable commands: !all enable")
-            await ctx.send(embed=embed)
-        else:
-            await ctx.send(message)
-
-    @all_text_group.command(name="enable")
-    async def all_enable(self, ctx: commands.Context) -> None:
-        """Re-enables all commands for everyone."""
-        if not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to authorized administrators.")
-            return
-
-        success, unrestricted_cmds, message = await enable_all_commands()
-        if success:
-            embed = discord.Embed(
-                title="All Commands Enabled",
-                description=f"Restrictions removed from **{len(unrestricted_cmds)}** commands. All commands are active.",
-                color=discord.Color.green()
-            )
-            cmd_lines = "\n".join(f"• `{c}`" for c in unrestricted_cmds)
-            embed.add_field(name="Unrestricted Commands", value=cmd_lines, inline=False)
-            embed.set_footer(text="To re-restrict commands: !all disable")
-            await ctx.send(embed=embed)
-        else:
-            await ctx.send(message)
-
-    @all_text_group.command(name="status", aliases=["list"])
-    async def all_status(self, ctx: commands.Context) -> None:
-        """Shows which commands are currently restricted."""
-        await self._show_all_status(ctx)
-
-    # =========================================================================
-    # SLASH COMMANDS: /all
-    # =========================================================================
-
-    @all_slash_group.command(name="disable", description="Restrict all commands (Administrators only)")
-    async def slash_all_disable(self, interaction: discord.Interaction) -> None:
-        if not await is_user_authorized(self.bot, interaction.user):
-            await interaction.response.send_message("This command is restricted to authorized administrators.", ephemeral=True)
-            return
-
-        success, restricted_cmds, message = await disable_all_commands(self.bot)
-        if success:
-            embed = discord.Embed(
-                title="All Commands Restricted",
-                description=f"A total of **{len(restricted_cmds)}** commands were successfully disabled.\nOnly authorized users can execute them.",
-                color=discord.Color.red()
-            )
-            cmd_lines = "\n".join(f"• `{c}`" for c in restricted_cmds)
-            embed.add_field(name="Restricted Commands", value=cmd_lines, inline=False)
-            embed.set_footer(text="To re-enable commands: /all enable")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
-
-    @all_slash_group.command(name="enable", description="Re-enable all restricted commands")
-    async def slash_all_enable(self, interaction: discord.Interaction) -> None:
-        if not await is_user_authorized(self.bot, interaction.user):
-            await interaction.response.send_message("This command is restricted to authorized administrators.", ephemeral=True)
-            return
-
-        success, unrestricted_cmds, message = await enable_all_commands()
-        if success:
-            embed = discord.Embed(
-                title="All Commands Enabled",
-                description=f"Restrictions removed from **{len(unrestricted_cmds)}** commands. All commands are active.",
-                color=discord.Color.green()
-            )
-            cmd_lines = "\n".join(f"• `{c}`" for c in unrestricted_cmds)
-            embed.add_field(name="Unrestricted Commands", value=cmd_lines, inline=False)
-            embed.set_footer(text="To re-restrict commands: /all disable")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
-
-    @all_slash_group.command(name="status", description="List which commands are currently restricted")
-    async def slash_all_status(self, interaction: discord.Interaction) -> None:
-        if not await is_user_authorized(self.bot, interaction.user):
-            await interaction.response.send_message("This command is restricted to authorized administrators.", ephemeral=True)
-            return
-
-        settings = await get_command_settings()
-        disabled = settings.get("disabled_commands", [])
-
-        embed = discord.Embed(title="Restricted Commands Status", color=discord.Color.gold())
-        if disabled:
-            cmd_lines = "\n".join(f"• `{c}`" for c in disabled)
-            embed.description = f"A total of **{len(disabled)}** commands are currently restricted:"
-            embed.add_field(name="Disabled Commands", value=cmd_lines, inline=False)
-            embed.set_footer(text="To enable all: /all enable | To restrict all: /all disable")
-        else:
-            embed.description = "No commands are currently restricted. All commands are active."
-            embed.set_footer(text="To restrict all: /all disable")
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
