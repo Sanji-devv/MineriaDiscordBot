@@ -19,27 +19,20 @@ DEVELOPER_ID = 388683129658933259
 
 # Core administrative and emergency recovery commands that can NEVER be disabled
 PROTECTED_COMMANDS: Set[str] = {
-    "d", "dup", "checkdup",
-    "gm", "player", "gmcheck", "pinfo",
-    "best", "top", "mostmissions", "bestchar"
+    "admin",
+    "gm", "player", "gmcheck", "pinfo"
 }
 
 _SETTINGS_CACHE: Optional[Dict[str, Any]] = None
 
 
 class CommandDisabledError(commands.CheckFailure):
-    """Raised when a command invocation is rejected due to active Command Guard restriction."""
-    def __init__(self, message: str = "This command is currently disabled by the developer."):
+    def __init__(self, message: str = "This command is temporarily disabled by admin."):
         self.message = message
         super().__init__(self.message)
 
 
 def normalize_command_name(name: str) -> str:
-    """
-    Normalizes a command identifier by stripping bot prefixes, extra whitespace,
-    and converting to lowercase.
-    Example: "!mineria char create" -> "char create", "/roll" -> "roll"
-    """
     if not name:
         return ""
     name = name.strip().lower()
@@ -52,10 +45,6 @@ def normalize_command_name(name: str) -> str:
 
 
 def extract_user_id(val: str) -> Optional[int]:
-    """
-    Extracts raw integer user ID from string or Discord mention format.
-    Example: "<@!388683129658933259>" or "<@388683129658933259>" -> 388683129658933259
-    """
     if not val:
         return None
     cleaned = val.strip().replace("<@", "").replace("!", "").replace(">", "").strip()
@@ -67,11 +56,6 @@ def extract_user_id(val: str) -> Optional[int]:
 # =============================================================================
 
 async def get_command_settings(force_reload: bool = False) -> Dict[str, Any]:
-    """
-    Reads Command Guard settings directly from the .env configuration file with in-memory caching.
-    Returns:
-        Dict with 'disabled_commands' (List[str]) and 'allowed_users' (List[int]).
-    """
     global _SETTINGS_CACHE
     if not force_reload and _SETTINGS_CACHE is not None:
         return _SETTINGS_CACHE
@@ -110,10 +94,6 @@ async def get_command_settings(force_reload: bool = False) -> Dict[str, Any]:
 
 
 async def save_command_settings(settings: Dict[str, Any]) -> None:
-    """
-    Persists Command Guard configuration directly into the .env file atomically.
-    Preserves all existing environment variables, whitespace, and comments.
-    """
     global _SETTINGS_CACHE
     _SETTINGS_CACHE = settings
 
@@ -163,7 +143,6 @@ async def save_command_settings(settings: Dict[str, Any]) -> None:
 # =============================================================================
 
 async def is_user_authorized(bot: commands.Bot, user: Union[discord.User, discord.Member]) -> bool:
-    """Checks whether the user possesses bypass authority (Developer, Bot Owner, or in allowed_users)."""
     if not user:
         return False
     # Developer ID retains absolute authorization
@@ -190,7 +169,6 @@ async def is_user_authorized(bot: commands.Bot, user: Union[discord.User, discor
 
 
 def is_command_disabled(cmd_name: str, settings: Dict[str, Any]) -> bool:
-    """Checks if a command or any of its parent groups is currently restricted."""
     cmd_name = normalize_command_name(cmd_name)
     if not cmd_name:
         return False
@@ -210,7 +188,6 @@ def is_command_disabled(cmd_name: str, settings: Dict[str, Any]) -> bool:
 
 
 async def disable_command(command_name: str) -> Tuple[bool, str]:
-    """Disables a specific command and commits changes to .env."""
     normalized = normalize_command_name(command_name)
     if not normalized:
         return False, "Invalid or empty command name."
@@ -236,7 +213,6 @@ async def disable_command(command_name: str) -> Tuple[bool, str]:
 
 
 async def enable_command(command_name: str) -> Tuple[bool, str]:
-    """Re-enables a previously disabled command and commits changes to .env."""
     normalized = normalize_command_name(command_name)
     if not normalized:
         return False, "Invalid or empty command name."
@@ -257,60 +233,8 @@ async def enable_command(command_name: str) -> Tuple[bool, str]:
     return True, f"`{normalized}` has been successfully re-enabled."
 
 
-def get_all_manageable_commands(bot: commands.Bot) -> List[str]:
-    """Collects all unique manageable root command names from the bot, excluding protected ones."""
-    cmds: Set[str] = set()
-    if hasattr(bot, "commands"):
-        for cmd in bot.commands:
-            name = cmd.name.lower().strip()
-            if name not in PROTECTED_COMMANDS and not name.startswith("cmd") and not name.startswith("all"):
-                cmds.add(name)
-    if hasattr(bot, "tree") and hasattr(bot.tree, "get_commands"):
-        for app_cmd in bot.tree.get_commands():
-            name = app_cmd.name.lower().strip()
-            if name not in PROTECTED_COMMANDS and not name.startswith("cmd") and not name.startswith("all"):
-                cmds.add(name)
-    return sorted(list(cmds))
-
-
-async def disable_all_commands(bot: commands.Bot) -> Tuple[bool, List[str], str]:
-    """Disables all manageable commands in bulk and commits changes to .env."""
-    all_cmds = get_all_manageable_commands(bot)
-    if not all_cmds:
-        return False, [], "No manageable commands found to restrict."
-
-    settings = await get_command_settings(force_reload=True)
-    current_disabled = set(settings.get("disabled_commands", []))
-    for cmd in all_cmds:
-        current_disabled.add(cmd)
-
-    settings["disabled_commands"] = sorted(list(current_disabled))
-    if DEVELOPER_ID not in settings.setdefault("allowed_users", []):
-        settings["allowed_users"].append(DEVELOPER_ID)
-
-    await save_command_settings(settings)
-    logger.info(f"All commands ({len(all_cmds)}) have been DISABLED by administrator.")
-    return True, all_cmds, f"A total of **{len(all_cmds)}** commands were successfully restricted."
-
-
-async def enable_all_commands() -> Tuple[bool, List[str], str]:
-    """Clears all command restrictions and commits changes to .env."""
-    settings = await get_command_settings(force_reload=True)
-    previously_disabled = settings.get("disabled_commands", [])
-    if not previously_disabled:
-        return False, [], "No commands are currently restricted. All commands are active."
-
-    settings["disabled_commands"] = []
-    if DEVELOPER_ID not in settings.setdefault("allowed_users", []):
-        settings["allowed_users"].append(DEVELOPER_ID)
-
-    await save_command_settings(settings)
-    logger.info(f"All commands have been ENABLED by administrator. Previously disabled: {previously_disabled}")
-    return True, previously_disabled, f"Restrictions successfully lifted from **{len(previously_disabled)}** commands."
-
 
 async def add_allowed_user(user_id: int) -> Tuple[bool, str]:
-    """Adds a Discord user ID to the bypass list in .env."""
     settings = await get_command_settings(force_reload=True)
     allowed = settings.setdefault("allowed_users", [])
     if user_id in allowed:
@@ -322,7 +246,6 @@ async def add_allowed_user(user_id: int) -> Tuple[bool, str]:
 
 
 async def remove_allowed_user(user_id: int) -> Tuple[bool, str]:
-    """Removes a Discord user ID from the bypass list in .env."""
     if user_id == DEVELOPER_ID:
         return False, "The permanent developer ID cannot be removed from the allowed list."
 
@@ -337,7 +260,6 @@ async def remove_allowed_user(user_id: int) -> Tuple[bool, str]:
 
 
 def get_interaction_command_name(interaction: discord.Interaction) -> Optional[str]:
-    """Extracts qualified hierarchical command name from Discord application command interaction data."""
     if not interaction.data:
         return None
     data = interaction.data
@@ -361,7 +283,6 @@ def get_interaction_command_name(interaction: discord.Interaction) -> Optional[s
 
 
 async def global_command_check(ctx: commands.Context) -> bool:
-    """Global check predicate evaluated before executing any traditional prefix command."""
     if not ctx.command:
         return True
 
@@ -374,13 +295,12 @@ async def global_command_check(ctx: commands.Context) -> bool:
 
     if is_command_disabled(cmd_name, settings):
         if not await is_user_authorized(ctx.bot, ctx.author):
-            raise CommandDisabledError("This command is currently disabled by the developer.")
+            raise CommandDisabledError("This command is temporarily disabled by admin.")
 
     return True
 
 
 async def global_interaction_check(interaction: discord.Interaction) -> bool:
-    """Global check predicate evaluated before executing any application slash command or autocomplete."""
     if interaction.type not in (discord.InteractionType.application_command, discord.InteractionType.autocomplete):
         return True
 
@@ -398,7 +318,7 @@ async def global_interaction_check(interaction: discord.Interaction) -> bool:
             if interaction.type != discord.InteractionType.autocomplete:
                 if not interaction.response.is_done():
                     await interaction.response.send_message(
-                        "This command is currently disabled by the developer.",
+                        "This command is temporarily disabled by admin.",
                         ephemeral=True
                     )
             return False
@@ -411,7 +331,6 @@ async def global_interaction_check(interaction: discord.Interaction) -> bool:
 # =============================================================================
 
 class Admin(commands.Cog, name="Admin"):
-    """Cog handling Command Guard control and background presence tasks."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -430,7 +349,6 @@ class Admin(commands.Cog, name="Admin"):
 
     @tasks.loop(minutes=5)
     async def presence_task(self) -> None:
-        """Periodic background task ensuring the bot displays active status and activity text."""
         try:
             activity = discord.Game(name="!m and !roll")
             await self.bot.change_presence(status=discord.Status.online, activity=activity)
@@ -449,8 +367,7 @@ class Admin(commands.Cog, name="Admin"):
 
     @commands.group(name="admin", invoke_without_command=True)
     async def admin_group(self, ctx: commands.Context) -> None:
-        """Admin panel for command management."""
-        if ctx.author.id != DEVELOPER_ID:
+        if not await is_user_authorized(self.bot, ctx.author):
             await ctx.send("This command is restricted to the developer.")
             return
 
@@ -467,8 +384,7 @@ class Admin(commands.Cog, name="Admin"):
 
     @admin_group.command(name="disable")
     async def admin_disable(self, ctx: commands.Context, *, command_name: Optional[str] = None) -> None:
-        """Disables a command for non-authorized users."""
-        if ctx.author.id != DEVELOPER_ID:
+        if not await is_user_authorized(self.bot, ctx.author):
             await ctx.send("This command is restricted to the developer.")
             return
 
@@ -480,8 +396,8 @@ class Admin(commands.Cog, name="Admin"):
         if success:
             norm = normalize_command_name(command_name)
             embed = discord.Embed(
-                title="Command Disabled ✅",
-                description=f"`{norm}` has been disabled.\nOnly authorized users can execute it.",
+                title="Command Disabled",
+                description=f"`{norm}` has been disabled across all servers.\nOnly authorized users can execute it.",
                 color=discord.Color.red()
             )
             await ctx.send(embed=embed)
@@ -490,8 +406,7 @@ class Admin(commands.Cog, name="Admin"):
 
     @admin_group.command(name="enable")
     async def admin_enable(self, ctx: commands.Context, *, command_name: Optional[str] = None) -> None:
-        """Re-enables a previously disabled command."""
-        if ctx.author.id != DEVELOPER_ID:
+        if not await is_user_authorized(self.bot, ctx.author):
             await ctx.send("This command is restricted to the developer.")
             return
 
@@ -503,8 +418,8 @@ class Admin(commands.Cog, name="Admin"):
         if success:
             norm = normalize_command_name(command_name)
             embed = discord.Embed(
-                title="Command Enabled ✅",
-                description=f"`{norm}` has been re-enabled for all users.",
+                title="Command Enabled",
+                description=f"`{norm}` has been re-enabled across all servers for all users.",
                 color=discord.Color.green()
             )
             await ctx.send(embed=embed)
@@ -513,8 +428,7 @@ class Admin(commands.Cog, name="Admin"):
 
     @admin_group.command(name="list")
     async def admin_list(self, ctx: commands.Context) -> None:
-        """Lists all currently disabled commands."""
-        if ctx.author.id != DEVELOPER_ID:
+        if not await is_user_authorized(self.bot, ctx.author):
             await ctx.send("This command is restricted to the developer.")
             return
 
@@ -530,5 +444,4 @@ class Admin(commands.Cog, name="Admin"):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Extension entry point for loading the Admin Cog."""
     await bot.add_cog(Admin(bot))

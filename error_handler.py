@@ -5,17 +5,12 @@ from log_handler import logger
 from admin import CommandDisabledError
 
 class ErrorHandler(commands.Cog, name="ErrorHandler"):
-    """Global error handling Cog for commands executed across text channels and DMs."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
-        """
-        Global listener triggered whenever an uncaught exception is raised during command execution.
-        Dispatches user-friendly feedback based on specific error types.
-        """
         # 1. Ignore unknown commands silently to prevent chat spam
         if isinstance(error, commands.CommandNotFound):
             return
@@ -49,8 +44,13 @@ class ErrorHandler(commands.Cog, name="ErrorHandler"):
                 await ctx.send(f"Bot Permissions Missing: The bot requires the following permissions in this channel: {missing}")
 
             # 7. Handle Command Guard restrictions (commands disabled by developer/admin)
-            elif isinstance(error, CommandDisabledError) or getattr(error, "original", None).__class__.__name__ == "CommandDisabledError":
-                notice = str(error).strip() or "This command is currently disabled by system administrators."
+            elif (
+                isinstance(error, CommandDisabledError)
+                or isinstance(getattr(error, "original", None), CommandDisabledError)
+                or getattr(error, "original", None).__class__.__name__ == "CommandDisabledError"
+            ):
+                cmd_err = error if isinstance(error, CommandDisabledError) else getattr(error, "original", error)
+                notice = getattr(cmd_err, "message", None) or str(cmd_err).strip() or "This command is temporarily disabled by admin."
                 await ctx.send(notice)
 
             # 8. Handle owner-only command restrictions
@@ -88,5 +88,4 @@ class ErrorHandler(commands.Cog, name="ErrorHandler"):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Extension entry point for loading the ErrorHandler Cog."""
     await bot.add_cog(ErrorHandler(bot))

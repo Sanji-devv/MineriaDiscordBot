@@ -3,10 +3,6 @@ from pathlib import Path
 from discord.ext import commands
 
 def setup_logging() -> logging.Logger:
-    """
-    Initializes and configures the centralized 'MineriaBot' logger.
-    Directs verbose logs to 'logs/mineria.log' with file rotation and concise output to console.
-    """
     # Ensure logs directory exists
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
@@ -38,10 +34,6 @@ logger = setup_logging()
 
 
 def format_ctx(ctx: commands.Context) -> str:
-    """
-    Formats Discord command execution context into a concise summary:
-    Format: [ServerName/#ChannelName] UserName: command_content
-    """
     # 1. Determine origin (Guild channel or Direct Message)
     if ctx.guild:
         channel_name = getattr(ctx.channel, "name", str(getattr(ctx.channel, "id", "unknown")))
@@ -61,19 +53,16 @@ def format_ctx(ctx: commands.Context) -> str:
 
 
 class LogHandler(commands.Cog, name="LogHandler"):
-    """Cog listening to command execution events to provide concise audit logging."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     @commands.Cog.listener()
     async def on_command_completion(self, ctx: commands.Context) -> None:
-        """Logs successful command execution."""
         logger.info(format_ctx(ctx))
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
-        """Logs concise summary of command errors with classified warning levels."""
         context_prefix = format_ctx(ctx)
 
         # Categorize common non-critical command warnings
@@ -100,5 +89,4 @@ class LogHandler(commands.Cog, name="LogHandler"):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Extension entry point for loading the LogHandler Cog."""
     await bot.add_cog(LogHandler(bot))

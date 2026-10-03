@@ -10,7 +10,6 @@ from typing import List, Any, Optional, Tuple, Union
 # =============================================================================
 
 class DiceTerm:
-    """Represents a dice pool term, such as 4d6k3 or -1d8."""
     def __init__(self, count: int, sides: int, keep_highest: Optional[int] = None, sign: int = 1):
         self.count = count                  # Number of dice to roll (e.g. 4 in 4d6)
         self.sides = sides                  # Number of sides per die (e.g. 6 in 4d6)
@@ -18,16 +17,6 @@ class DiceTerm:
         self.sign = sign                    # +1 for positive, -1 for negative
 
     def roll(self) -> Tuple[int, List[int], List[int], List[int]]:
-        """
-        Executes the dice roll and applies keep/drop logic.
-        
-        Returns:
-            Tuple of:
-            - subtotal: int (sum of kept dice * sign)
-            - all_rolls: List[int] (all rolled dice in original order)
-            - kept_rolls: List[int] (the dice counted toward the total)
-            - dropped_rolls: List[int] (the dice discarded)
-        """
         raw_rolls = [random.randint(1, self.sides) for _ in range(self.count)]
 
         if self.keep_highest is not None and self.keep_highest < self.count:
@@ -44,7 +33,6 @@ class DiceTerm:
 
 
 class ModifierTerm:
-    """Represents a static flat integer bonus or penalty (e.g. +5 or -2)."""
     def __init__(self, value: int, sign: int = 1):
         self.value = abs(value) * sign  # Signed integer value
         self.sign = sign
@@ -59,13 +47,6 @@ TOKEN_PATTERN = re.compile(r'([+-]?)(?:(\d*)d(\d+)(?:k(?:h)?(\d+))?|(\d+)|k(?:h)
 
 
 def parse_dice_expression(expression: str) -> Union[List[Union[DiceTerm, ModifierTerm]], str]:
-    """
-    Parses a single dice expression string into a structured list of terms.
-    
-    Returns:
-        List[Union[DiceTerm, ModifierTerm]] if parsing succeeded.
-        str error code ("INVALID_FORMAT", "ZERO_SIDES", "ZERO_KEEP", etc.) on failure.
-    """
     expr = expression.lower().replace(" ", "")
     if not expr:
         return "INVALID_FORMAT"
@@ -145,15 +126,6 @@ def parse_dice_expression(expression: str) -> Union[List[Union[DiceTerm, Modifie
 # =============================================================================
 
 def evaluate_dice_terms(terms: List[Union[DiceTerm, ModifierTerm]]) -> Tuple[int, str, str]:
-    """
-    Evaluates parsed terms by executing rolls, tracking totals, and building Markdown output.
-
-    Returns:
-        Tuple of:
-        - total: int
-        - breakdown_str: str (e.g. "[**6**, **5**, **4**, ~~1~~] + 4")
-        - clean_expression: str (e.g. "4d6k3+4")
-    """
     total = 0
     breakdown_parts: List[str] = []
     expression_parts: List[str] = []
@@ -204,13 +176,11 @@ def evaluate_dice_terms(terms: List[Union[DiceTerm, ModifierTerm]]) -> Tuple[int
 # =============================================================================
 
 class Dice(commands.Cog):
-    """Pathfinder 1e Polyhedral Dice Roller Engine."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     def _build_help_embed(self) -> discord.Embed:
-        """Constructs an aesthetic help guide for dice syntax."""
         embed = discord.Embed(
             title="Dice Roller Help",
             description="Roll standard Pathfinder 1e polyhedral dice with math modifiers and keep-highest logic.",
@@ -224,7 +194,6 @@ class Dice(commands.Cog):
         return embed
 
     async def _execute_rolls(self, ctx_or_interaction: Any, expression: Optional[str]):
-        """Shared execution engine for both prefix and slash dice commands."""
         # If no expression provided, send syntax help embed
         if not expression or not expression.strip():
             help_embed = self._build_help_embed()
@@ -297,7 +266,6 @@ class Dice(commands.Cog):
 
     @commands.command(name="roll", aliases=["r"], description="Roll polyhedral dice (e.g. 1d20+5, 4d6k3, d6).")
     async def prefix_roll(self, ctx: commands.Context, *, expression: Optional[str] = None):
-        """Rolls dice based on expression (e.g. !roll 1d20+5, !r 4d6k3)."""
         await self._execute_rolls(ctx, expression)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -307,7 +275,6 @@ class Dice(commands.Cog):
     @app_commands.command(name="roll", description="Roll polyhedral dice (e.g. 1d20+5, 4d6k3, d6)")
     @app_commands.describe(expression="Dice expression to roll (e.g. 1d20+5, 4d6k3, d20, d6)")
     async def slash_roll(self, interaction: discord.Interaction, expression: Optional[str] = None):
-        """Slash command for rolling dice."""
         await self._execute_rolls(interaction, expression)
 
 

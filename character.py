@@ -17,14 +17,14 @@ from admin import DEVELOPER_ID, is_user_authorized
 # =============================================================================
 # SECTION 1: CORE CONCURRENCY, ATOMIC STORAGE & INTERACTION ADAPTER
 # =============================================================================
-
 DATA_DIR = Path(__file__).parent / "datas"
+if not DATA_DIR.exists():
+    DATA_DIR = Path(__file__).parent / "data"
 _JSON_CACHE: Dict[str, Tuple[float, Any]] = {}
 _STATIC_CACHE: Dict[str, Any] = {}
 
 
 class AsyncReentrantLock:
-    """An asyncio reentrant lock allowing nested acquisitions within the same async task."""
 
     def __init__(self):
         self._lock = asyncio.Lock()
@@ -61,17 +61,12 @@ _FILE_LOCKS: Dict[str, AsyncReentrantLock] = {}
 
 
 def get_file_lock(filename: str) -> AsyncReentrantLock:
-    """Returns or creates a shared AsyncReentrantLock for the target JSON filename."""
     if filename not in _FILE_LOCKS:
         _FILE_LOCKS[filename] = AsyncReentrantLock()
     return _FILE_LOCKS[filename]
 
 
 async def load_json(filename: str, force_reload: bool = False) -> Union[Dict, List, Any]:
-    """
-    Loads JSON data with concurrency-safe locking and in-memory caching.
-    Uses static caching for immutable game rulebooks (races.json, classes.json).
-    """
     # Fast-path for read-only static rule definitions
     if filename in ("races.json", "classes.json") and not force_reload and filename in _STATIC_CACHE:
         return _STATIC_CACHE[filename]
@@ -99,10 +94,6 @@ async def load_json(filename: str, force_reload: bool = False) -> Union[Dict, Li
 
 
 async def save_json(filename: str, data: Any) -> None:
-    """
-    Atomically writes data to a temporary file before renaming to target path.
-    Prevents corrupt files during abrupt server restarts or process termination.
-    """
     lock = get_file_lock(filename)
     async with lock:
         path = DATA_DIR / filename
@@ -119,21 +110,12 @@ async def save_json(filename: str, data: Any) -> None:
 
 
 def roll_stat_detailed(num_dice: int) -> Tuple[List[int], List[int]]:
-    """
-    Rolls N d6 dice, sorts in descending order, and keeps the highest 3 dice.
-    Returns:
-        (all_rolls, top_3_kept_rolls)
-    """
     all_rolls = [random.randint(1, 6) for _ in range(num_dice)]
     kept_rolls = sorted(all_rolls, reverse=True)[:3]
     return all_rolls, kept_rolls
 
 
 def get_recommendations(stats: Dict[str, int], classes: List[dict]) -> List[dict]:
-    """
-    Calculates class suitability scores based on rolled physical and mental attributes.
-    Weights primary stats at 100% and secondary stats at 50%.
-    """
     recommendations = []
     for cls in classes:
         primaries = cls.get("primary_stats", [])
@@ -156,10 +138,6 @@ def get_recommendations(stats: Dict[str, int], classes: List[dict]) -> List[dict
 
 
 class InteractionContextAdapter:
-    """
-    Adapts a discord.Interaction into a commands.Context compatible interface.
-    Allows handler functions to support both prefix commands and slash interactions seamlessly.
-    """
 
     def __init__(self, interaction: discord.Interaction, bot: Optional[commands.Bot] = None):
         self.interaction = interaction
@@ -223,7 +201,6 @@ class InteractionContextAdapter:
 # =============================================================================
 
 class BonusSelectView(discord.ui.View):
-    """Interactive Discord UI View providing buttons to allocate flexible racial stat bonuses (+2 Any)."""
 
     def __init__(self, cog: Any, ctx: Any, creation: Dict[str, Any], roll_history: str, bonus_val: int):
         super().__init__(timeout=86400)  # Active for up to 24 hours
@@ -241,7 +218,6 @@ class BonusSelectView(discord.ui.View):
             self.add_item(btn)
 
     async def on_timeout(self) -> None:
-        """Disables all bonus selection buttons when the session expires."""
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
@@ -291,10 +267,6 @@ class BonusSelectView(discord.ui.View):
 
 
 def parse_racial_modifiers(race_data: dict) -> Dict[str, int]:
-    """
-    Extracts fixed attribute bonuses and flexible modifiers from race definition.
-    Example: Human gives flexible +2 Any; Dwarf gives +2 CON, +2 WIS, -2 CHA.
-    """
     mods = {s: 0 for s in ["STR", "DEX", "CON", "INT", "WIS", "CHA"]}
 
     # Structured modifiers format
@@ -328,7 +300,6 @@ def parse_racial_modifiers(race_data: dict) -> Dict[str, int]:
 def generate_stat_embed(
     bot: commands.Bot, ctx: Any, creation: Dict[str, Any], rolls_text: str, racial_mods: Dict[str, int]
 ) -> discord.Embed:
-    """Builds a rich overview embed of rolled attributes, modifiers, and racial traits."""
     author_name = getattr(ctx.author, "display_name", ctx.author.name)
     embed = discord.Embed(
         title="Stat Roll Results",
@@ -376,7 +347,6 @@ def generate_stat_embed(
 
 
 async def handle_create(cog: Any, ctx: Any, race_name: Optional[str] = None) -> None:
-    """Initiates character creation session for a chosen race (Admin Only)."""
     if not race_name:
         await ctx.send("Usage: `!char create <race>` (e.g. `!char create Human` or `!char create Half-Elf`)")
         return
@@ -434,7 +404,6 @@ async def handle_create(cog: Any, ctx: Any, race_name: Optional[str] = None) -> 
 
 
 async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
-    """Distributes allocated dice points across attributes and rolls stats."""
     user_id = ctx.author.id
     if user_id not in cog.active_creations:
         await ctx.send(embed=discord.Embed(
@@ -515,16 +484,20 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
         return
 
     final_stats: Dict[str, int] = {}
+    base_stats_dict: Dict[str, int] = {}
+    raw_rolls_dict: Dict[str, List[int]] = {}
     racial_mods = parse_racial_modifiers(creation["race_data"])
     rolls_text = ""
 
     for stat, num in stats_to_set.items():
         all_rolls, top_rolls = roll_stat_detailed(num)
+        raw_rolls_dict[stat] = all_rolls
         sorted_rolls = sorted(all_rolls, reverse=True)
         kept_part = sorted_rolls[:3]
         dropped_part = sorted_rolls[3:]
 
         base_total = sum(kept_part)
+        base_stats_dict[stat] = base_total
         mod = racial_mods.get(stat, 0)
         final_val = base_total + mod
         final_stats[stat] = final_val
@@ -537,6 +510,25 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
 
     creation["stats"] = final_stats
     creation["stat_history"] = rolls_text
+
+    # Record distribution statistics for analytics & charts
+    try:
+        from stat_analytics import record_dr_roll
+        author = getattr(ctx, "author", getattr(ctx, "user", None))
+        if author:
+            await record_dr_roll(
+                user=author,
+                race=creation.get("race_name", "Unknown"),
+                dice_points=dice_points,
+                stats_allocated=stats_to_set,
+                raw_rolls=raw_rolls_dict,
+                base_stats=base_stats_dict,
+                racial_modifiers=racial_mods,
+                final_stats=final_stats
+            )
+    except Exception as exc:
+        logger.error(f"Error recording DR roll analytics: {exc}")
+
     embed_stats = generate_stat_embed(cog.bot, ctx, creation, rolls_text, racial_mods)
 
     # Attach interactive button view if flexible racial bonus exists (+2 Any)
@@ -566,7 +558,6 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
 
 
 async def _adjust_creation_stat(cog: Any, ctx: Any, args: Tuple[Any, ...], multiplier: int) -> None:
-    """Helper to adjust an attribute stat value (+/-) during active character creation."""
     tokens = [str(a).strip().strip('"\'') for a in args if str(a).strip()]
     keys = ("STR", "DEX", "CON", "INT", "WIS", "CHA")
     action = "add" if multiplier > 0 else "remove"
@@ -608,12 +599,10 @@ async def _adjust_creation_stat(cog: Any, ctx: Any, args: Tuple[Any, ...], multi
 
 
 async def handle_add_stat(cog: Any, ctx: Any, *args: str) -> None:
-    """Adds bonus points to an attribute during active creation."""
     await _adjust_creation_stat(cog, ctx, args, multiplier=1)
 
 
 async def handle_remove_stat(cog: Any, ctx: Any, *args: str) -> None:
-    """Removes points from an attribute during active creation."""
     await _adjust_creation_stat(cog, ctx, args, multiplier=-1)
 
 
@@ -622,7 +611,6 @@ async def handle_remove_stat(cog: Any, ctx: Any, *args: str) -> None:
 # =============================================================================
 
 async def handle_save_char(cog: Any, ctx: Any, *, name: Optional[str] = None) -> None:
-    """Commits and finalizes active character creation session to characters.json."""
     user_id = ctx.author.id
     if user_id not in cog.active_creations or not cog.active_creations[user_id]["stats"]:
         await ctx.send("No pending character creation to save. Use `!char create` first.")
@@ -693,7 +681,6 @@ async def handle_save_char(cog: Any, ctx: Any, *, name: Optional[str] = None) ->
 
 
 async def handle_rec(cog: Any, ctx: Any) -> None:
-    """Displays recommendation toggle options."""
     embed = discord.Embed(title="Recommendation Settings", color=discord.Color.blue())
     embed.description = "Toggle automatic class recommendations during character creation."
     embed.add_field(name="Commands", value="`!rec open` - Enable\n`!rec close` - Disable")
@@ -701,7 +688,6 @@ async def handle_rec(cog: Any, ctx: Any) -> None:
 
 
 async def handle_rec_open(cog: Any, ctx: Any) -> None:
-    """Enables class recommendations for user."""
     uid = str(ctx.author.id)
     async with get_file_lock("user_settings.json"):
         settings = await load_json("user_settings.json", force_reload=True)
@@ -713,7 +699,6 @@ async def handle_rec_open(cog: Any, ctx: Any) -> None:
 
 
 async def handle_rec_close(cog: Any, ctx: Any) -> None:
-    """Disables class recommendations for user."""
     uid = str(ctx.author.id)
     async with get_file_lock("user_settings.json"):
         settings = await load_json("user_settings.json", force_reload=True)
@@ -729,7 +714,6 @@ async def handle_rec_close(cog: Any, ctx: Any) -> None:
 # =============================================================================
 
 async def handle_edit(cog: Any, ctx: Any) -> None:
-    """Shows character editing help menu."""
     embed = discord.Embed(title="Edit Character", color=discord.Color.blue())
     embed.description = "Modify an existing character's data."
     embed.add_field(name="Class", value="`!char edit class <Name> <NewClass>`")
@@ -738,7 +722,6 @@ async def handle_edit(cog: Any, ctx: Any) -> None:
 
 
 async def handle_edit_class(cog: Any, ctx: Any, *args: str) -> None:
-    """Edits a saved character's class."""
     if not args:
         embed = discord.Embed(title="Edit Class", color=discord.Color.blue())
         embed.description = "Modify a character's assigned class."
@@ -806,7 +789,6 @@ async def handle_edit_class(cog: Any, ctx: Any, *args: str) -> None:
 
 
 async def handle_edit_stat(cog: Any, ctx: Any, *args: str) -> None:
-    """Modifies a specific stat value for a saved character."""
     if not args:
         embed = discord.Embed(title="Edit Stat", color=discord.Color.blue())
         embed.description = "Modify a character's attribute score directly."
@@ -865,7 +847,6 @@ async def handle_edit_stat(cog: Any, ctx: Any, *args: str) -> None:
 
 
 async def handle_info(cog: Any, ctx: Any, *, name: Optional[str] = None) -> None:
-    """Displays detailed character sheet with attributes, class, and modifiers."""
     characters = await load_json("characters.json")
     uid = str(ctx.author.id)
     user_chars = characters.get(uid, [])
@@ -960,7 +941,6 @@ async def handle_info(cog: Any, ctx: Any, *, name: Optional[str] = None) -> None
 
 
 async def handle_list_chars(cog: Any, ctx: Any) -> None:
-    """Lists all saved characters belonging to the user."""
     characters = await load_json("characters.json")
     user_chars = characters.get(str(ctx.author.id), [])
 
@@ -991,7 +971,6 @@ async def handle_list_chars(cog: Any, ctx: Any) -> None:
 
 
 async def handle_rename(cog: Any, ctx: Any, *args: str) -> None:
-    """Renames an existing character."""
     if not args:
         embed = discord.Embed(title="Rename Character", color=discord.Color.blue())
         embed.description = "Change the name of one of your characters."
@@ -1058,7 +1037,6 @@ async def handle_rename(cog: Any, ctx: Any, *args: str) -> None:
 
 
 async def handle_delete_char(cog: Any, ctx: Any, *, name: Optional[str] = None) -> None:
-    """Permanently deletes a character from the user's roster."""
     if not name:
         embed = discord.Embed(title="Delete Character", color=discord.Color.red())
         embed.description = "Permanently delete a character from your roster."
@@ -1100,7 +1078,6 @@ async def handle_delete_char(cog: Any, ctx: Any, *, name: Optional[str] = None) 
 # =============================================================================
 
 class CharacterCog(commands.Cog, name="Character"):
-    """Consolidated Character Creation, Management, and Stat Engine."""
 
     char_group = app_commands.Group(name="char", description="Character creation and management commands")
 
@@ -1120,12 +1097,12 @@ class CharacterCog(commands.Cog, name="Character"):
 
     @commands.group(name="char", invoke_without_command=True)
     async def char(self, ctx: commands.Context) -> None:
-        """Root command for Character Management."""
         embed = discord.Embed(title="Character Commands", color=discord.Color.gold())
         embed.description = (
             "**Creation & Recovery**\n"
             "`!char create <race>` - Start creation (Admin Only)\n"
             "`!char dr <stats>` - Distribute dice\n"
+            "`!char stats [graph] [user]` - View stat analytics & charts\n"
             "`!char add/remove <stat> <val>` - Tweak stats\n"
             "`!char save <name>` - Finalize character\n"
             "`!char kia <name>` - Calculate starting XP for fallen character\n"
@@ -1152,7 +1129,30 @@ class CharacterCog(commands.Cog, name="Character"):
 
     @char.command(name="dr")
     async def distribute(self, ctx: commands.Context, *args: str) -> None:
+        if args and args[0].lower() in ("stats", "analytics", "graph", "chart"):
+            cog = self.bot.get_cog("StatAnalytics") or self.bot.get_cog("DRAnalytics")
+            if cog:
+                if args[0].lower() in ("graph", "chart"):
+                    target = args[1] if len(args) > 1 else None
+                    await cog.stats_graph(ctx, target=target)
+                else:
+                    target = args[1] if len(args) > 1 else None
+                    await cog.stats_group(ctx, target=target)
+                return
         await handle_distribute(self, ctx, *args)
+
+    @char.command(name="stats", aliases=["analytics"])
+    async def char_stats(self, ctx: commands.Context, *args: str) -> None:
+        cog = self.bot.get_cog("StatAnalytics") or self.bot.get_cog("DRAnalytics")
+        if cog:
+            if args and args[0].lower() in ("graph", "chart", "plot"):
+                target = args[1] if len(args) > 1 else None
+                await cog.stats_graph(ctx, target=target)
+            else:
+                target = args[0] if args else None
+                await cog.stats_group(ctx, target=target)
+        else:
+            await ctx.send("Analytics system is currently unavailable.")
 
     @char.command(name="add")
     async def add_stat(self, ctx: commands.Context, *args: str) -> None:
@@ -1168,7 +1168,6 @@ class CharacterCog(commands.Cog, name="Character"):
 
     @char.command(name="kia")
     async def kia(self, ctx: commands.Context, *, char_name: str) -> None:
-        """Calculates dead character's starting XP (50% task XP + fixed XP)."""
         cog = self.bot.get_cog("Utility")
         if cog:
             await cog.fetch_and_calculate_xp(ctx, char_name, 0.5, "KIA XP", discord.Color.dark_red())
@@ -1177,7 +1176,6 @@ class CharacterCog(commands.Cog, name="Character"):
 
     @char.command(name="mia")
     async def mia(self, ctx: commands.Context, *, char_name: str) -> None:
-        """Calculates missing character's starting XP (90% task XP + fixed XP)."""
         cog = self.bot.get_cog("Utility")
         if cog:
             await cog.fetch_and_calculate_xp(ctx, char_name, 0.9, "MIA XP", discord.Color.gold())
@@ -1492,5 +1490,4 @@ class CharacterCog(commands.Cog, name="Character"):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Extension entry point for loading the Character Cog."""
     await bot.add_cog(CharacterCog(bot))

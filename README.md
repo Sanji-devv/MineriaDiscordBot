@@ -95,16 +95,15 @@ The bot listens to the following prefixes:
 | `!char delete <name>` | `!char delete Aric` | Permanently delete a character sheet. |
 | `!rec` | `!rec` | Toggle automatic class recommendations on/off. |
 
-### 📊 Campaign & XP Commands
+### 📊 Campaign & Analytics Commands
 | Command | Example | Description |
 |---|---|---|
+| `!stats [user]` | `!stats` | Generate 4-panel visual stat distribution charts. |
+| `!stats summary` | `!stats summary` | View numerical breakdown, score brackets, and records. |
+| `!stats history` | `!stats history` | View recent distribution roll logs. |
 | `!kia <name>` | `!kia Varka` | Calculate starting XP for a replacement after character death. |
-| `!retire <name>` | `!retire Varka` | Calculate starting XP when retiring a character. |
 | `!mia <name>` | `!mia Varka` | Calculate starting XP with Missing-in-Action penalties. |
-| `!newchar <name>` | `!newchar Varka` | Calculate starting XP for a new campaign character. |
-| `!dup` / `!d` | `!dup` | Scan the XP sheet for duplicate roster violations. |
 | `!gm <player>` | `!gm "player name"` | View total GM sessions and GM history for a player across all characters. |
-| `!best <player>` | `!best "player name"` | Rank player's characters by most missions/games played. |
 
 ### 📁 Documents, Maps & General
 | Command | Example | Description |
@@ -112,13 +111,14 @@ The bot listens to the following prefixes:
 | `!doc [name]` | `!doc rules.pdf` | Browse or download campaign PDF documents. |
 | `!map [name]` | `!map world_map` | Browse campaign tactical maps with page navigation. |
 | `!wiki` | `!wiki` | Display official Mineria and Pathfinder Wiki links. |
-| `!help` / `!m` | `!help` | Open the interactive bot help menu. |
+| `!help` / `!m` | `!m` | Open the interactive bot command terminal. |
 
-### 🔒 Admin Commands (Owner Only)
+### 🔒 Admin Commands (Authorized Only)
 | Command | Example | Description |
 |---|---|---|
-| `!sync` | `!sync` | Synchronize the Discord application command tree. |
-| `!broadcast <message>` | `!broadcast Server update` | Send a broadcast message to configured announcement channels. |
+| `!admin disable <cmd>` | `!admin disable char create` | Restrict a command globally across all servers. |
+| `!admin enable <cmd>` | `!admin enable char create` | Re-enable a command for all server members. |
+| `!admin list` | `!admin list` | View all currently restricted commands. |
 
 ---
 

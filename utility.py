@@ -80,20 +80,12 @@ TR_MAP = str.maketrans({
 
 
 def normalize_name(s: str) -> str:
-    """
-    Normalizes Turkish characters, collapses whitespace, and converts to lowercase.
-    Example: 'İlker ŞAHİN' -> 'ilker sahin'
-    """
     if not s:
         return ""
     return " ".join(s.translate(TR_MAP).lower().split())
 
 
 def parse_xp_value(val: Any) -> float:
-    """
-    Safely parses numeric XP values from Google Sheet cells across international formatting variations.
-    Example: '43.935' -> 43935.0, '14,049' -> 14049.0, '1.250,50' -> 1250.5
-    """
     if val is None:
         return 0.0
     if isinstance(val, (int, float)):
@@ -130,11 +122,6 @@ def parse_xp_value(val: Any) -> float:
 
 
 def get_level_info(current_xp: float) -> Tuple[int, float, int]:
-    """
-    Calculates current character level, remaining XP needed for the next milestone, and next level number.
-    Returns:
-        (current_level, xp_needed_for_next, next_level)
-    """
     current_xp = max(0.0, current_xp)
     current_level = 1
 
@@ -153,7 +140,6 @@ def get_level_info(current_xp: float) -> Tuple[int, float, int]:
 
 
 def format_number(val: Any) -> str:
-    """Formats numeric values with thousand comma separators (e.g. 57984 -> '57,984')."""
     if val is None:
         return "0"
     val_str = str(val).strip()
@@ -174,18 +160,6 @@ def format_number(val: Any) -> str:
 def find_sheet_character(
     query: str, data: List[Dict[str, Any]]
 ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
-    """
-    Finds a character in sheet data using a robust 4-stage matching strategy:
-    1. Exact Match (case-insensitive & TR-normalized)
-    2. Substring Match (query inside character name)
-    3. Token-Set Match (handles inverted word order, e.g. 'Quickfire Thoma' -> 'Thoma Quickfire')
-    4. Fuzzy / Typo Match (difflib SequenceMatcher on whole string & individual words, e.g. 'Thoma Quackfire' -> 'Thoma Quickfire')
-
-    Returns:
-        (matched_char, []) if a single high-confidence match is resolved.
-        (None, [candidates]) if ambiguous or multiple suggestions exist.
-        (None, []) if no match could be found.
-    """
     clean_target = normalize_name(query)
     if not clean_target or not data:
         return None, []
@@ -256,7 +230,6 @@ def find_sheet_character(
 # =============================================================================
 
 class OneTimeCommands(commands.Cog, name="Utility"):
-    """Cog handling XP table queries, roster compliance, and campaign analytics."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -272,7 +245,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
         self._cache_timestamp: float = 0.0
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Reuses or creates persistent aiohttp ClientSession with 45s total / 15s connect timeout."""
         if self._session is None or self._session.closed:
             timeout = aiohttp.ClientTimeout(total=45, connect=15)
             self._session = aiohttp.ClientSession(timeout=timeout)
@@ -283,12 +255,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
             await self._session.close()
 
     async def fetch_xp_data(self, force_refresh: bool = True) -> Tuple[List[Dict[str, Any]], int]:
-        """
-        Fetches and parses both the Player XP Tracker (Active & Archived tables) and Mission Reports (GM Column AM)
-        directly from Google Sheets every time it is requested (no 5-minute caching).
-        Returns:
-            Tuple: (List of active character entries for dup checking, count of skipped rows)
-        """
         now = time.time()
 
         if not XP_SHEET_URL:
@@ -464,10 +430,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
 
     @commands.command(name="gm", aliases=["player", "gmcheck", "pinfo"])
     async def gm_player_command(self, ctx: commands.Context, *, player_query: Optional[str] = None) -> None:
-        """
-        Queries Player XP Tracker and Mission Reports for player character and GM session data.
-        Usage: !gm <player's full name> (e.g.: !gm John Doe)
-        """
         if ctx.author.id != DEVELOPER_ID and not await is_user_authorized(self.bot, ctx.author):
             await ctx.send("This command is restricted to administrators.")
             return
@@ -682,381 +644,12 @@ class OneTimeCommands(commands.Cog, name="Utility"):
         await ctx.send(embed=embed)
 
     # =========================================================================
-    # SECTION 5: BEST CHARACTER MISSION RANKINGS (!best, /best)
-    # =========================================================================
-
-    @commands.command(name="best", aliases=["top", "mostmissions", "bestchar"])
-    async def best_character_command(self, ctx: commands.Context, *, player_query: Optional[str] = None) -> None:
-        """
-        Ranks a player's characters by most missions/games played in descending order.
-        Usage: !best <player's full name> (e.g.: !best John Doe)
-        """
-        if ctx.author.id != DEVELOPER_ID and not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to administrators.")
-            return
-
-        avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
-
-        if not player_query or not player_query.strip():
-            embed = discord.Embed(
-                title="Most Active Characters Ranking",
-                description=(
-                    "Lists all active and archived characters of a player ranked by most missions/games played.\n\n"
-                    "**Usage:** `!best <player's full name>`\n"
-                    "**Example:** `!best John Doe`\n\n"
-                    "**Alternative Commands:** `!m best`, `!top`, `!mostmissions`, `!bestchar`"
-                ),
-                color=discord.Color.gold()
-            )
-            if avatar_url:
-                embed.set_footer(text="Mineria RPG • Character Rankings", icon_url=avatar_url)
-            else:
-                embed.set_footer(text="Mineria RPG • Character Rankings")
-            await ctx.send(embed=embed)
-            return
-
-        raw_query = player_query.strip().strip('"\'')
-        query_norm = normalize_name(raw_query)
-
-        msg = await ctx.send("Scanning Player XP Tracker data...")
-        await self.fetch_xp_data()
-
-        if msg:
-            try:
-                await msg.delete()
-            except Exception:
-                pass
-
-        if not self._cache_players:
-            await ctx.send("Failed to fetch XP table data or sheet is empty.")
-            return
-
-        target_player = None
-        match_note = None
-
-        if query_norm in self._cache_players:
-            target_player = self._cache_players[query_norm]
-
-        if not target_player and query_norm in self._cache_char_map:
-            owners = list({e["player_name"] for e in self._cache_char_map[query_norm]})
-            if len(owners) == 1:
-                target_player = owners[0]
-                matched_char_name = self._cache_char_map[query_norm][0]["char_name"]
-                match_note = f"Character Match: **{matched_char_name}** -> **{target_player}**"
-
-        if not target_player:
-            candidates = [p for norm_p, p in self._cache_players.items() if query_norm in norm_p or norm_p in query_norm]
-            if len(candidates) == 1:
-                target_player = candidates[0]
-            elif len(candidates) > 1:
-                cand_list = "\n".join([f"• `{p}`" for p in candidates[:15]])
-                if len(candidates) > 15:
-                    cand_list += f"\n*...and {len(candidates) - 15} more player(s).*"
-                embed = discord.Embed(
-                    title=f"Multiple Players Found ({len(candidates)})",
-                    description=(
-                        f"Players matching **'{raw_query}'**:\n\n"
-                        f"{cand_list}\n\n"
-                        f"Please try again using the player's full name:\n`!best <player's full name>`"
-                    ),
-                    color=discord.Color.orange()
-                )
-                if avatar_url:
-                    embed.set_footer(text="Mineria RPG • Character Rankings", icon_url=avatar_url)
-                await ctx.send(embed=embed)
-                return
-
-        if not target_player:
-            char_candidates = [norm_c for norm_c in self._cache_char_map if query_norm in norm_c]
-            if len(char_candidates) == 1:
-                matched_entries = self._cache_char_map[char_candidates[0]]
-                owners = list({e["player_name"] for e in matched_entries})
-                if len(owners) == 1:
-                    target_player = owners[0]
-                    match_note = f"Character Match: **{matched_entries[0]['char_name']}** -> **{target_player}**"
-            elif not char_candidates:
-                scored_c = []
-                for norm_c in self._cache_char_map:
-                    sim = difflib.SequenceMatcher(None, query_norm, norm_c).ratio()
-                    words = norm_c.split()
-                    if words:
-                        w_sim = max(difflib.SequenceMatcher(None, query_norm, w).ratio() for w in words)
-                        sim = max(sim, w_sim * 0.9)
-                    if sim >= 0.70:
-                        scored_c.append((sim, norm_c))
-                if scored_c:
-                    scored_c.sort(key=lambda x: x[0], reverse=True)
-                    if len(scored_c) == 1 or scored_c[0][0] >= 0.80 or (scored_c[0][0] - scored_c[1][0] >= 0.08):
-                        best_norm = scored_c[0][1]
-                        matched_entries = self._cache_char_map[best_norm]
-                        owners = list({e["player_name"] for e in matched_entries})
-                        if len(owners) == 1:
-                            target_player = owners[0]
-                            match_note = f"Character Match: **{matched_entries[0]['char_name']}** -> **{target_player}**"
-
-        if not target_player:
-            close_matches = difflib.get_close_matches(query_norm, list(self._cache_players.keys()), n=4, cutoff=0.5)
-            embed = discord.Embed(
-                title="Player Not Found",
-                description=f"No record found for **{raw_query}** on the Player XP Tracker.",
-                color=discord.Color.red()
-            )
-            if close_matches:
-                sug_list = "\n".join([f"• `!best {self._cache_players[c]}`" for c in close_matches])
-                embed.add_field(name="Did you mean:", value=sug_list, inline=False)
-            if avatar_url:
-                embed.set_footer(text="Mineria RPG • Character Rankings", icon_url=avatar_url)
-            await ctx.send(embed=embed)
-            return
-
-        target_norm = normalize_name(target_player)
-        active_list = [c for c in self._cache_active if c["norm_player"] == target_norm]
-        graveyard_list = [c for c in self._cache_graveyard if c["norm_player"] == target_norm]
-
-        def _safe_int(val: Any) -> int:
-            try:
-                return int(str(val).replace(".", "").replace(",", "").strip())
-            except Exception:
-                return 0
-
-        all_ranked_chars = []
-        for c in active_list:
-            all_ranked_chars.append({
-                "char_name": c["char_name"],
-                "norm_char": c["norm_char"],
-                "type": "Active",
-                "status_label": f"Active - {c['rank']}",
-                "missions_count": _safe_int(c["missions"]),
-                "xp_int": _safe_int(c["xp"]),
-            })
-
-        for c in graveyard_list:
-            all_ranked_chars.append({
-                "char_name": c["char_name"],
-                "norm_char": c["norm_char"],
-                "type": "Archived",
-                "status_label": f"Archived - {c['status']}",
-                "missions_count": _safe_int(c["games"]),
-                "xp_int": _safe_int(c["xp"]),
-            })
-
-        if not all_ranked_chars:
-            await ctx.send(f"No characters found for player **{target_player}**.")
-            return
-
-        all_ranked_chars.sort(key=lambda x: (x["missions_count"], x["xp_int"]), reverse=True)
-
-        total_missions = sum(c["missions_count"] for c in all_ranked_chars)
-        total_xp = sum(c["xp_int"] for c in all_ranked_chars)
-
-        embed = discord.Embed(
-            title=f"Most Missions Played: {target_player}",
-            color=discord.Color.gold()
-        )
-
-        desc_lines = []
-        if match_note:
-            desc_lines.append(match_note)
-
-        desc_lines.extend([
-            f"**Player:** `{target_player}`",
-            f"**Total Characters:** **{len(all_ranked_chars)}** ({len(active_list)} Active • {len(graveyard_list)} Archived)",
-            f"**Total Missions:** **{total_missions:,}** • **Total XP:** **{total_xp:,} XP**",
-            "──────────────────────────────",
-        ])
-
-        medals = {1: "[#1]", 2: "[#2]", 3: "[#3]"}
-        ranking_lines = []
-        for rank, c in enumerate(all_ranked_chars, start=1):
-            medal = medals.get(rank, f"`#{rank:02d}`")
-            gm_c = self._cache_gm_counts.get(c["norm_char"], 0)
-            gm_badge = f" • **{gm_c} GM**" if gm_c > 0 else ""
-            line = f"{medal} **{c['char_name']}** — **{c['missions_count']}** Mission(s) *({c['status_label']} • {format_number(c['xp_int'])} XP)*{gm_badge}"
-            ranking_lines.append(line)
-
-        desc_lines.append("\n".join(ranking_lines))
-        embed.description = "\n".join(desc_lines)
-
-        if avatar_url:
-            embed.set_footer(text="Mineria RPG • Character Rankings", icon_url=avatar_url)
-        else:
-            embed.set_footer(text="Mineria RPG • Character Rankings")
-
-        await ctx.send(embed=embed)
-
-    # =========================================================================
-    # SECTION 6: DUPLICATE PLAYER & RANK RULE ENFORCEMENT (!d, /d)
-    # =========================================================================
-
-    @commands.command(name="d", aliases=["dup", "checkdup"])
-    async def duplicate_check_command(self, ctx: commands.Context, *args: str) -> None:
-        """
-        Scans the Google Sheet for players violating character limit rules:
-        Max 1 Ranked (Senior/Expert/Wanderer) + 1 Clerk per player.
-        Usage: !d [refresh]
-        """
-        if ctx.author.id != DEVELOPER_ID and not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to administrators.")
-            return
-
-        avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
-        force_refresh = any(arg.lower() in ("refresh", "reload", "r") for arg in args)
-
-        msg = await ctx.send("Fetching XP table data...")
-        data, skipped = await self.fetch_xp_data(force_refresh=force_refresh)
-        if not data and skipped == 0:
-            err_msg = "Error: Failed to fetch XP table data or sheet is empty. Please check logs."
-            if msg:
-                await msg.edit(content=err_msg)
-            else:
-                await ctx.send(err_msg)
-            return
-
-        active_chars = []
-        inactive_count = 0
-
-        for entry in data:
-            rank_str = entry.get("rank", "").lower()
-            if any(k in rank_str for k in INACTIVE_KEYWORDS):
-                inactive_count += 1
-            else:
-                active_chars.append(entry)
-
-        players: Dict[str, Tuple[str, list]] = {}
-        for entry in active_chars:
-            raw_p = entry["player_name"].strip()
-            norm_p = normalize_name(raw_p)
-            if norm_p not in players:
-                players[norm_p] = (raw_p, [])
-            players[norm_p][1].append(entry)
-
-        violations: Dict[str, Tuple[str, list, str]] = {}
-
-        for norm_p, (display_name, chars) in players.items():
-            if len(chars) <= 1:
-                continue
-
-            if len(chars) >= 3:
-                reason = f"**3+ Character Violation** ({len(chars)} active characters)"
-                violations[norm_p] = (display_name, chars, reason)
-            elif len(chars) == 2:
-                c1_rank = chars[0].get("rank", "").lower()
-                c2_rank = chars[1].get("rank", "").lower()
-
-                c1_is_clerk = "clerk" in c1_rank
-                c2_is_clerk = "clerk" in c2_rank
-                clerk_count = (1 if c1_is_clerk else 0) + (1 if c2_is_clerk else 0)
-
-                def is_qualified_ranked(r_str: str) -> bool:
-                    return any(k in r_str for k in QUALIFIED_RANKS)
-
-                if clerk_count == 2:
-                    reason = "**2 Clerk Character Violation**"
-                    violations[norm_p] = (display_name, chars, reason)
-                elif clerk_count == 0:
-                    if any(k in c1_rank for k in ["candidate"]) and any(k in c2_rank for k in ["candidate"]):
-                        reason = "**2 Candidate Character Violation**"
-                    else:
-                        reason = "**2 Ranked Character Violation** (Missing Clerk character)"
-                    violations[norm_p] = (display_name, chars, reason)
-                elif clerk_count == 1:
-                    other_rank = c2_rank if c1_is_clerk else c1_rank
-                    if is_qualified_ranked(other_rank):
-                        # Compliant combination (Senior + Clerk, Expert + Clerk, or Wanderer + Clerk)
-                        pass
-                    elif any(k in other_rank for k in ["candidate"]):
-                        reason = "**Candidate + Clerk Violation** (Only Senior/Expert/Wanderer + Clerk allowed)"
-                        violations[norm_p] = (display_name, chars, reason)
-                    elif any(k in other_rank for k in ["member"]):
-                        reason = "**Member + Clerk Violation** (Only Senior/Expert/Wanderer + Clerk allowed)"
-                        violations[norm_p] = (display_name, chars, reason)
-                    else:
-                        reason = "**Invalid Duo Violation** (Only Senior/Expert/Wanderer + Clerk allowed)"
-                        violations[norm_p] = (display_name, chars, reason)
-
-        if msg:
-            try:
-                await msg.delete()
-            except Exception:
-                pass
-
-        has_violations = bool(violations)
-        embed = discord.Embed(
-            title="Duplicate Player Check",
-            color=discord.Color.red() if has_violations else discord.Color.green()
-        )
-
-        embed.add_field(
-            name="Scan Summary",
-            value=(
-                f"Scanned: **{len(data)}** entries\n"
-                f"Active:   **{len(active_chars)}** characters\n"
-                f"Inactive: **{inactive_count}** (ignored)\n"
-                f"Skipped:  **{skipped}** rows (missing data)"
-            ),
-            inline=True
-        )
-
-        if has_violations:
-            embed.add_field(name="Status", value=f"**{len(violations)}** player(s) in violation", inline=True)
-        else:
-            embed.add_field(name="Status", value="All active players are **compliant**!", inline=True)
-
-        embed.add_field(
-            name="Allowed Rule",
-            value="Max **1 Ranked** (Senior / Expert / Wanderer) + **1 Clerk** per player",
-            inline=False
-        )
-
-        if has_violations:
-            embed.add_field(name="\u200b", value="─" * 30, inline=False)
-            items_added = 0
-            for _norm_p, (display_name, chars, reason) in violations.items():
-                if items_added >= 15:
-                    embed.add_field(
-                        name="Other Violations",
-                        value=f"*...and {len(violations) - items_added} more player(s) in violation.*",
-                        inline=False
-                    )
-                    break
-
-                char_lines = []
-                for c in chars:
-                    r_lower = c.get("rank", "").lower()
-                    is_clerk = "clerk" in r_lower
-                    role_tag = "Clerk" if is_clerk else "Ranked"
-                    char_name = c.get("char_name", "Unknown")
-                    rank_name = c.get("rank", "Unknown")
-                    char_lines.append(f"[{role_tag}] **{char_name}** — *{rank_name}*")
-
-                val_text = f"**Reason:** {reason}\n" + "\n".join(char_lines)
-                if len(val_text) > 1000:
-                    val_text = val_text[:990] + "\n*...*"
-
-                embed.add_field(name=f"{display_name} ({len(chars)} Characters)", value=val_text, inline=False)
-                items_added += 1
-        else:
-            embed.add_field(name="Result", value="No violations found. The server is compliant.", inline=False)
-
-        if avatar_url:
-            embed.set_footer(text="Mineria RPG • Rule Enforcement", icon_url=avatar_url)
-        else:
-            embed.set_footer(text="Mineria RPG • Rule Enforcement")
-
-        await ctx.send(embed=embed)
-
-    # =========================================================================
-    # SECTION 7: FALLEN (KIA) & MISSING (MIA) XP SYSTEM (!kia, !mia)
+    # SECTION 5: FALLEN (KIA) & MISSING (MIA) XP SYSTEM (!kia, !mia)
     # =========================================================================
 
     async def fetch_and_calculate_xp(
         self, ctx: Any, char_name: str, multiplier: float, title: str, color: discord.Color
     ) -> None:
-        """
-        Calculates starting XP for replacement characters:
-        KIA: (Fixed XP) + (50% of Task XP)
-        MIA: (Fixed XP) + (90% of Task XP)
-        """
         char_name = char_name.strip().strip('"\'')
         if not char_name:
             await ctx.send("Character name required. Example: `!kia Varka`")
@@ -1136,18 +729,10 @@ class OneTimeCommands(commands.Cog, name="Utility"):
 
     @commands.command(name="kia")
     async def kia_command(self, ctx: commands.Context, *, char_name: str) -> None:
-        """
-        Calculates dead character's starting XP: (K+L+M) + (0.5 * (I+J)).
-        Usage: !kia <character name>
-        """
         await self.fetch_and_calculate_xp(ctx, char_name, 0.5, "KIA XP", discord.Color.dark_red())
 
     @commands.command(name="mia")
     async def mia_command(self, ctx: commands.Context, *, char_name: str) -> None:
-        """
-        Calculates missing character's starting XP: (K+L+M) + (0.9 * (I+J)).
-        Usage: !mia <character name>
-        """
         await self.fetch_and_calculate_xp(ctx, char_name, 0.9, "MIA XP", discord.Color.gold())
 
     # =========================================================================
@@ -1157,7 +742,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
     async def _kia_character_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> List[app_commands.Choice[str]]:
-        """Provides autocomplete choices from user's saved characters and campaign sheet cache."""
         choices = []
         curr_lower = current.lower().strip()
         seen_names = set()
@@ -1252,5 +836,4 @@ Utility = OneTimeCommands
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Extension entry point for loading the Utility Cog."""
     await bot.add_cog(OneTimeCommands(bot))

@@ -70,7 +70,6 @@ CATEGORY_ALIASES: Dict[str, str] = {
 
 
 async def _safe_delete(ctx: Any) -> None:
-    """Safely deletes an invoking context message if present, suppressing permissions/not-found errors."""
     msg = getattr(ctx, "message", None)
     if msg:
         try:
@@ -80,7 +79,6 @@ async def _safe_delete(ctx: Any) -> None:
 
 
 class Traits(commands.Cog, name="Traits"):
-    """Cog handling trait pool lookups, race compatibility filtering, and interactive rerolls."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -93,7 +91,6 @@ class Traits(commands.Cog, name="Traits"):
         self._load_traits_sync()
 
     async def cog_load(self) -> None:
-        """Asynchronously loads traits database via thread executor to prevent blocking gateway."""
         loop = asyncio.get_running_loop()
         try:
             await loop.run_in_executor(None, self._load_traits_sync)
@@ -101,12 +98,13 @@ class Traits(commands.Cog, name="Traits"):
             logger.error(f"Error loading traits database in thread executor: {exc}")
 
     def _load_traits_sync(self, force: bool = False) -> None:
-        """Reads datas/traits.json and builds fast category lookup indices."""
         if self.traits and not force:
             return
         file_path = Path(__file__).parent / "datas" / "traits.json"
         if not file_path.exists():
-            logger.warning("datas/traits.json not found.")
+            file_path = Path(__file__).parent / "data" / "traits.json"
+        if not file_path.exists():
+            logger.warning("datas/traits.json or data/traits.json not found.")
             return
 
         try:
@@ -157,7 +155,6 @@ class Traits(commands.Cog, name="Traits"):
     # =========================================================================
 
     async def _is_admin(self, user: Any) -> bool:
-        """Determines if the invoking user is a server administrator or authorized developer."""
         if not user:
             return False
         # Server administrators have full access
@@ -173,10 +170,6 @@ class Traits(commands.Cog, name="Traits"):
         return False
 
     async def _send_all_category_traits(self, ctx: Any, cat_query: str) -> None:
-        """
-        [ADMIN] Sends all traits belonging to the specified category.
-        Splits into clean paginated embeds if the list is large.
-        """
         raw_cat = cat_query.strip().lower()
         cat_key = CATEGORY_ALIASES.get(raw_cat, raw_cat)
 
@@ -249,13 +242,6 @@ class Traits(commands.Cog, name="Traits"):
 
     @staticmethod
     def _is_race_match(trait_name: str, race_query: str) -> bool:
-        """
-        Determines whether a race query matches a trait's parenthetical race specification.
-        Example matches:
-          - 'half elf' matches 'Half-Elf' or 'Elf (Half-Elf)'
-          - 'human' matches 'Human' or 'Any (Human)'
-          - 'werebat' matches 'Werebat or Werebat-kin'
-        """
         if not race_query or not trait_name:
             return False
 
@@ -299,9 +285,6 @@ class Traits(commands.Cog, name="Traits"):
     def _select_trait(
         self, t_type: str, val: Optional[str], race: Optional[str], exclude_names: Set[str]
     ) -> Optional[Dict[str, Any]]:
-        """
-        Selects a random trait based on category or race criteria, excluding already picked names.
-        """
         if t_type == "category" and val:
             cat_key = CATEGORY_ALIASES.get(val.lower(), val.lower())
             category_traits = self.traits_by_cat.get(cat_key, [])
@@ -342,7 +325,6 @@ class Traits(commands.Cog, name="Traits"):
     def _build_trait_embed(
         self, results: List[Optional[Dict[str, Any]]], race: Optional[str], errors: Optional[List[str]] = None
     ) -> discord.Embed:
-        """Constructs a clean, styled Discord embed displaying drawn traits with wiki links."""
         race_desc = f" for race **{race.capitalize()}**" if race else ""
         embed = discord.Embed(
             title="Random Traits",
@@ -382,42 +364,38 @@ class Traits(commands.Cog, name="Traits"):
         return embed
 
     def build_trait_help_embed(self, user: Optional[Any] = None) -> discord.Embed:
-        """Constructs a comprehensive Trait System guide embed listing all categories."""
         embed = discord.Embed(
             title="Mineria Trait System Guide",
             description=(
-                "Characters can draw **3 traits** across distinct categories during character creation.\n"
-                "Traits grant unique background bonuses, roleplay flavor, and combat or magic utility.\n\n"
-                "**Available Categories:**\n"
-                "Combat | Magic | Faith | Social | Race | Plane | Craft | Nature | Underworld | Scholar | Regional | Religion | Campaign | Equipment | Family | Mount | Occult | Tactic | Urban"
+                "Characters draw **3 traits** across distinct categories during character creation.\n"
+                "Traits grant unique background bonuses, combat options, and roleplay flavor."
             ),
             color=discord.Color.from_rgb(114, 137, 218)
         )
 
-        # Build clean category catalog with descriptions and live counts
         cat_meta = [
-            ("Combat", "combat", "Physical combat, initiative bonuses, attack and combat maneuvers"),
-            ("Magic", "magic", "Spellcasting modifiers, concentration, metamagic and spell resistance"),
-            ("Faith", "faith", "Sacred devotion, spiritual conviction, willpower and divine favor"),
-            ("Social", "social", "Persuasion, bluff, diplomacy, streetwise and interpersonal influence"),
-            ("Race", "race", "Heritage-specific traits (e.g. `race(human)`, `race(elf)`, `race(dwarf)`)"),
-            ("Plane", "plane", "Planar ancestry, elemental planes, Great Beyond and adaptability"),
-            ("Craft", "craft", "Alchemy, blacksmithing, artisan production and construct fabrication"),
-            ("Nature", "nature", "Wilderness survival, flora & fauna, natural biomes, weather and environmental acclimatization"),
-            ("Underworld", "underworld", "Crime, black market, smuggling, thievery, assassination, stealth, and streetwise subterfuge"),
-            ("Scholar", "scholar", "Academic research, historical archives, linguistics, archeology, planar cosmology and knowledge disciplines"),
-            ("Regional", "regional", "Homeland origins, terrain acclimatization and regional folklore"),
-            ("Religion", "religion", "Deity patronage, sacred tenets, temple oaths and dogma"),
-            ("Campaign", "campaign", "Adventure milestones, campaign background hooks and storyline traits"),
-            ("Equipment", "equipment", "Specialized arms, ancestral armor mastery and heirloom gear"),
-            ("Family", "family", "Noble bloodlines, household traditions and family legacies"),
-            ("Mount", "mount", "Mounted combat, loyal steeds and beast bonding synergy"),
-            ("Occult", "occult", "Spiritual entities, mediums, curses, eldritch lore and alien phenomena"),
-            ("Tactic", "tactic", "Battlefield coordination, teamwork maneuvers, leadership synergy and defensive tactics"),
-            ("Urban", "urban", "Metropolitan life, city streets, merchants, nobility and diplomatic influence"),
+            ("Combat", "combat", "Physical combat, initiative bonuses & attack maneuvers"),
+            ("Magic", "magic", "Spellcasting modifiers, concentration & metamagic"),
+            ("Faith", "faith", "Sacred devotion, spiritual conviction & divine favor"),
+            ("Social", "social", "Persuasion, bluff, diplomacy & interpersonal influence"),
+            ("Race", "race", "Heritage traits (e.g. `race(human)`, `race(elf)`, `race(dwarf)`)"),
+            ("Tactic", "tactic", "Battlefield coordination, teamwork & defensive tactics"),
+            ("Craft", "craft", "Alchemy, blacksmithing & artisan production"),
+            ("Underworld", "underworld", "Crime, stealth, thievery & streetwise subterfuge"),
+            ("Scholar", "scholar", "Academic research, archives, lore & languages"),
+            ("Nature", "nature", "Wilderness survival, fauna/flora & biome adaptation"),
+            ("Regional", "regional", "Homeland origins, terrain & regional folklore"),
+            ("Religion", "religion", "Deity patronage, sacred tenets & dogma"),
+            ("Plane", "plane", "Planar ancestry, Great Beyond & elemental adaptability"),
+            ("Campaign", "campaign", "Adventure milestones & campaign storyline hooks"),
+            ("Equipment", "equipment", "Specialized arms, ancestral armor & heirloom gear"),
+            ("Family", "family", "Noble bloodlines, household traditions & legacies"),
+            ("Mount", "mount", "Mounted combat, loyal steeds & beast bonding"),
+            ("Occult", "occult", "Spiritual entities, mediums, eldritch lore & curses"),
+            ("Urban", "urban", "Metropolitan life, city streets & civic influence"),
         ]
 
-        cat_lines = []
+        cat_lines: List[str] = []
         known_keys = set()
         for name, key, desc in cat_meta:
             known_keys.add(key)
@@ -425,8 +403,8 @@ class Traits(commands.Cog, name="Traits"):
                 count = len(self.race_traits)
             else:
                 count = len(self.traits_by_cat.get(key, []))
-            count_str = f" `({count} traits)`" if count > 0 else ""
-            cat_lines.append(f"> **{name}**{count_str}\n> *{desc}*")
+            count_str = f" `({count})`" if count > 0 else ""
+            cat_lines.append(f"• **{name}**{count_str} — *{desc}*")
 
         # Dynamically include any other categories found in traits.json
         ignored_keys = {"none", "disabled", "inactive"} | set(CATEGORY_ALIASES.keys())
@@ -434,51 +412,43 @@ class Traits(commands.Cog, name="Traits"):
             canonical = CATEGORY_ALIASES.get(key, key)
             if key not in known_keys and canonical not in known_keys and key not in ignored_keys:
                 count = len(self.traits_by_cat[key])
-                cat_lines.append(f"> **{key.capitalize()}** `({count} traits)`\n> *Custom {key.capitalize()} category*")
+                count_str = f" `({count})`" if count > 0 else ""
+                cat_lines.append(f"• **{key.capitalize()}**{count_str} — *Custom category*")
                 known_keys.add(key)
                 known_keys.add(canonical)
 
-        # Chunk category lines dynamically to guarantee each field is well within Discord's 1024-char limit
-        chunks: List[str] = []
-        current_lines: List[str] = []
-        current_len = 0
-        for line in cat_lines:
-            line_cost = len(line) + (2 if current_lines else 0)
-            if current_lines and (current_len + line_cost > 900 or len(current_lines) >= 7):
-                chunks.append("\n\n".join(current_lines))
-                current_lines = [line]
-                current_len = len(line)
-            else:
-                current_lines.append(line)
-                current_len += line_cost
-        if current_lines:
-            chunks.append("\n\n".join(current_lines))
+        # Split categories cleanly into two balanced fields
+        mid = (len(cat_lines) + 1) // 2
+        part1 = cat_lines[:mid]
+        part2 = cat_lines[mid:]
 
-        total_chunks = len(chunks)
-        for idx, chunk_text in enumerate(chunks, 1):
-            embed.add_field(
-                name=f"AVAILABLE TRAIT CATEGORIES ({idx}/{total_chunks})",
-                value=chunk_text,
-                inline=False
-            )
+        embed.add_field(
+            name="AVAILABLE TRAIT CATEGORIES (1/2)",
+            value="\n".join(part1),
+            inline=False
+        )
+        embed.add_field(
+            name="AVAILABLE TRAIT CATEGORIES (2/2)",
+            value="\n".join(part2),
+            inline=False
+        )
 
         embed.add_field(
             name="COMMAND USAGE & EXAMPLES",
             value=(
-                "• `!trait combat social magic` -> Draw 3 standard categories\n"
-                "• `!trait race(elf) combat faith` -> Draw 1 race trait + 2 standard categories\n"
+                "• `!trait <cat1> <cat2> <cat3>` -> Draw 3 categories (e.g. `!trait combat social magic`)\n"
+                "• `!trait race(<race>) <c1> <c2>` -> Include race trait (e.g. `!trait race(elf) combat faith`)\n"
                 "• `!trait random 3` -> Draw from 3 distinct random categories\n"
-                "• `!trait plane craft magic` -> Draw with planar and craft pools included\n"
                 "• `!trait <category> all` -> (Admin) List all traits in category (e.g. `!trait plane all`)"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="REROLL MECHANICS (24-HOUR WINDOW)",
+            name="REROLL (24-HOUR WINDOW)",
             value=(
-                "• `!trait reroll 1 2` -> Rerolls trait #1 and #2 in-place\n"
-                "• `!trait reroll combat` -> Rerolls only the combat trait\n"
+                "• `!trait reroll <1/2/3>` -> Rerolls specific trait slot (e.g. `!trait reroll 1 2`)\n"
+                "• `!trait reroll <category>` -> Rerolls only that category (e.g. `!trait reroll combat`)\n"
                 "• `!trait reroll all` -> Rerolls all 3 drawn traits"
             ),
             inline=False
@@ -486,7 +456,7 @@ class Traits(commands.Cog, name="Traits"):
 
         avatar_url = user.display_avatar.url if (user and getattr(user, "display_avatar", None)) else None
         user_name = getattr(user, "display_name", getattr(user, "name", "Player")) if user else "Player"
-        footer_text = f"Requested by: {user_name} | Mineria RPG | Trait System"
+        footer_text = f"Requested by: {user_name} | Mineria RPG • Trait System"
         if avatar_url:
             embed.set_footer(text=footer_text, icon_url=avatar_url)
         else:
@@ -500,17 +470,9 @@ class Traits(commands.Cog, name="Traits"):
 
     @commands.group(name="trait", aliases=["traits", "t"], invoke_without_command=True)
     async def trait(self, ctx: commands.Context, *args: str) -> None:
-        """
-        Draws random traits matching user-specified categories or race.
-        Examples:
-          !trait combat social magic
-          !trait race(elf) combat faith
-          !trait random 3
-        """
         await self._execute_trait_roll(ctx, *args)
 
     async def _execute_trait_roll(self, ctx: Any, *args: str) -> None:
-        """Core execution logic for rolling traits, shared cleanly between prefix and slash commands."""
         if not self.traits:
             await ctx.send("Trait database is empty or could not be loaded.")
             return
@@ -523,7 +485,7 @@ class Traits(commands.Cog, name="Traits"):
                     cleaned_tokens.append(part)
 
         # Show trait help embed if no arguments or explicit help query
-        if not cleaned_tokens or (len(cleaned_tokens) == 1 and cleaned_tokens[0].lower() in ("help", "h", "list", "categories", "kategori", "kategoriler")):
+        if not cleaned_tokens or (len(cleaned_tokens) == 1 and cleaned_tokens[0].lower() in ("help", "h", "list", "categories")):
             user = getattr(ctx, "author", getattr(ctx, "user", None))
             embed = self.build_trait_help_embed(user)
             await ctx.send(embed=embed)
@@ -726,18 +688,13 @@ class Traits(commands.Cog, name="Traits"):
                 "time": time.time()
             }
 
-    @trait.command(name="help", aliases=["h", "list", "categories", "kategori", "kategoriler"])
+    @trait.command(name="help", aliases=["h", "list", "categories"])
     async def trait_help(self, ctx: commands.Context) -> None:
-        """Displays a comprehensive catalog of all trait categories and usage instructions."""
         embed = self.build_trait_help_embed(ctx.author)
         await ctx.send(embed=embed)
 
     @trait.command(name="all")
     async def trait_all(self, ctx: commands.Context, *, category: Optional[str] = None) -> None:
-        """
-        [ADMIN ONLY] Lists all traits in a specified category.
-        Usage: !trait all <category> or !trait <category> all
-        """
         user = ctx.author
         if not await self._is_admin(user):
             await ctx.send("Access Denied: This command is restricted to administrators.")
@@ -751,13 +708,6 @@ class Traits(commands.Cog, name="Traits"):
 
     @trait.command(name="reroll", aliases=["rr"])
     async def reroll(self, ctx: commands.Context, *args: str) -> None:
-        """
-        Rerolls one or more recently drawn traits.
-        Examples:
-          !trait reroll 1 2
-          !trait reroll combat social
-          !trait reroll all
-        """
         user_id = ctx.author.id
         now = time.time()
 
@@ -905,7 +855,6 @@ class Traits(commands.Cog, name="Traits"):
     async def _trait_categories_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> List[app_commands.Choice[str]]:
-        """Provides autocomplete options for standard and custom trait categories."""
         standard = [
             "Combat", "Magic", "Faith", "Social", "Race", "Campaign", "Equipment", "Regional", "Religion", "Family", "Mount", "Plane", "Craft", "Nature", "Underworld", "Scholar", "Occult", "Tactic", "Urban"
         ]
@@ -932,7 +881,6 @@ class Traits(commands.Cog, name="Traits"):
     async def _trait_race_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> List[app_commands.Choice[str]]:
-        """Provides autocomplete options for campaign races."""
         try:
             races = await load_json("races.json")
             curr_lower = current.lower().strip()
@@ -961,7 +909,6 @@ class Traits(commands.Cog, name="Traits"):
         category3: Optional[str] = None,
         race: Optional[str] = None
     ) -> None:
-        """Slash command variant for rolling traits."""
         args = [category1]
         if category2:
             args.append(category2)
@@ -1000,7 +947,6 @@ class Traits(commands.Cog, name="Traits"):
     @app_commands.command(name="trait_all", description="[Admin] List all traits in the specified category")
     @app_commands.describe(category="Trait category to list (e.g. Plane, Craft, Combat)")
     async def slash_trait_all(self, interaction: discord.Interaction, category: str) -> None:
-        """Lists all traits in a category (Admin only)."""
         if not await self._is_admin(interaction.user):
             await interaction.response.send_message("Access Denied: This command is restricted to administrators.", ephemeral=True)
             return
@@ -1016,11 +962,9 @@ class Traits(commands.Cog, name="Traits"):
 
     @app_commands.command(name="traits", description="List all available trait categories and system guide")
     async def slash_traits(self, interaction: discord.Interaction) -> None:
-        """Displays a comprehensive catalog of all trait categories and usage instructions."""
         embed = self.build_trait_help_embed(interaction.user)
         await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Extension entry point for loading the Traits Cog."""
     await bot.add_cog(Traits(bot))

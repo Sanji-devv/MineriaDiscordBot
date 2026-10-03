@@ -9,7 +9,6 @@ from discord.ext import commands
 from character import InteractionContextAdapter
 
 class Documents(commands.Cog, name="Documents"):
-    """Cog handling campaign documents and tactical battlemaps."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -31,10 +30,6 @@ class Documents(commands.Cog, name="Documents"):
     # =========================================================================
 
     async def _get_docs(self) -> List[Tuple[Path, float]]:
-        """
-        Retrieves cached list of document paths and file sizes (in MB).
-        Refreshes cache via background thread when TTL expires.
-        """
         now = time.time()
         if self._docs_cache[1] and (now - self._docs_cache[0] < self._cache_ttl):
             return self._docs_cache[1]
@@ -55,10 +50,6 @@ class Documents(commands.Cog, name="Documents"):
         return docs
 
     async def _get_maps(self) -> List[Path]:
-        """
-        Retrieves cached list of map file paths.
-        Refreshes cache via background thread when TTL expires.
-        """
         now = time.time()
         if self._maps_cache[1] and (now - self._maps_cache[0] < self._cache_ttl):
             return self._maps_cache[1]
@@ -77,7 +68,6 @@ class Documents(commands.Cog, name="Documents"):
 
     @commands.group(name="doc", invoke_without_command=True)
     async def doc_command(self, ctx: commands.Context, *, query: Optional[str] = None) -> None:
-        """Lists all downloadable campaign documents, or sends a specific file by name."""
         # Handle list shortcut (e.g. "!doc" or "!doc list")
         if not query or query.lower().strip() == "list":
             await self._list_docs(ctx)
@@ -87,11 +77,9 @@ class Documents(commands.Cog, name="Documents"):
 
     @doc_command.command(name="list")
     async def doc_list(self, ctx: commands.Context) -> None:
-        """Lists all available documents in mineria_files/docs/."""
         await self._list_docs(ctx)
 
     async def _list_docs(self, ctx: commands.Context | InteractionContextAdapter) -> None:
-        """Builds and sends an embed catalog of all available documents."""
         doc_entries = await self._get_docs()
         if not doc_entries:
             await ctx.send("The `mineria_files/docs/` directory is currently empty.")
@@ -123,7 +111,6 @@ class Documents(commands.Cog, name="Documents"):
         await ctx.send(embed=embed)
 
     async def _send_doc(self, ctx: commands.Context | InteractionContextAdapter, query: str) -> None:
-        """Validates file safety, locates document via exact or fuzzy match, and sends as Discord attachment."""
         doc_entries = await self._get_docs()
         if not doc_entries:
             await ctx.send("The `mineria_files/docs/` directory is currently empty.")
@@ -178,7 +165,6 @@ class Documents(commands.Cog, name="Documents"):
 
     @commands.group(name="map", invoke_without_command=True)
     async def map_group(self, ctx: commands.Context, *, name: Optional[str] = None) -> None:
-        """Lists all tactical battlemaps, or displays a map image by name."""
         if not name or name.lower().strip() == "list":
             await self._list_maps(ctx)
         else:
@@ -186,11 +172,9 @@ class Documents(commands.Cog, name="Documents"):
 
     @map_group.command(name="list")
     async def map_list(self, ctx: commands.Context) -> None:
-        """Lists all available maps in mineria_files/maps/."""
         await self._list_maps(ctx)
 
     async def _list_maps(self, ctx: commands.Context | InteractionContextAdapter) -> None:
-        """Builds and sends an embed catalog of all tactical battlemaps."""
         maps = await self._get_maps()
         if not maps:
             await ctx.send("The `mineria_files/maps/` directory is currently empty.")
@@ -222,7 +206,6 @@ class Documents(commands.Cog, name="Documents"):
         await ctx.send(embed=embed)
 
     async def _send_map(self, ctx: commands.Context | InteractionContextAdapter, name: str) -> None:
-        """Finds a tactical battlemap via exact or fuzzy match and displays it."""
         maps = await self._get_maps()
         if not maps:
             await ctx.send("No maps found in `mineria_files/maps/`.")
@@ -256,7 +239,6 @@ class Documents(commands.Cog, name="Documents"):
     @app_commands.command(name="doc", description="Download a campaign PDF or view available documents")
     @app_commands.describe(title="Name of the PDF document to view or download")
     async def slash_doc(self, interaction: discord.Interaction, title: Optional[str] = None) -> None:
-        """Slash command for accessing documents with autocomplete."""
         await interaction.response.defer()
         adapter = InteractionContextAdapter(interaction, self.bot)
         if not title or title.lower().strip() == "list":
@@ -268,7 +250,6 @@ class Documents(commands.Cog, name="Documents"):
     async def slash_doc_title_auto(
         self, interaction: discord.Interaction, current: str
     ) -> List[app_commands.Choice[str]]:
-        """Provides dynamic autocomplete choices for document filenames."""
         docs = await self._get_docs()
         curr_lower = current.lower().strip()
         choices = []
@@ -287,7 +268,6 @@ class Documents(commands.Cog, name="Documents"):
     @app_commands.command(name="map", description="Display a tactical battlemap or view available maps")
     @app_commands.describe(name="Name of the battlemap to display")
     async def slash_map(self, interaction: discord.Interaction, name: Optional[str] = None) -> None:
-        """Slash command for displaying maps with autocomplete."""
         await interaction.response.defer()
         adapter = InteractionContextAdapter(interaction, self.bot)
         if not name or name.lower().strip() == "list":
@@ -299,7 +279,6 @@ class Documents(commands.Cog, name="Documents"):
     async def slash_map_name_auto(
         self, interaction: discord.Interaction, current: str
     ) -> List[app_commands.Choice[str]]:
-        """Provides dynamic autocomplete choices for map names."""
         maps = await self._get_maps()
         curr_lower = current.lower().strip()
         choices = []
@@ -314,5 +293,4 @@ class Documents(commands.Cog, name="Documents"):
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Extension entry point for loading the Documents Cog."""
     await bot.add_cog(Documents(bot))

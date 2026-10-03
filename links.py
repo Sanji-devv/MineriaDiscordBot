@@ -3,13 +3,11 @@ from discord import app_commands
 from discord.ext import commands
 
 class Links(commands.Cog, name="Links"):
-    """Cog providing quick navigation links to Mineria Wiki resources."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     def _build_wiki_embed(self) -> discord.Embed:
-        """Constructs the standard rich embed with wiki reference links."""
         embed = discord.Embed(
             title="Mineria Wiki Links",
             description="Official reference resources and guides for the Mineria RPG Campaign.",
@@ -52,17 +50,14 @@ class Links(commands.Cog, name="Links"):
 
     @commands.command(name="wiki", aliases=["link"])
     async def links(self, ctx: commands.Context) -> None:
-        """Displays official Mineria Wiki navigation links."""
         embed = self._build_wiki_embed()
         await ctx.send(embed=embed)
 
     @app_commands.command(name="wiki", description="Display official Mineria Wiki and reference links")
     async def slash_wiki(self, interaction: discord.Interaction) -> None:
-        """Slash command variant for quick access to wiki links."""
         embed = self._build_wiki_embed()
         await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
-    """Extension entry point for loading the Links Cog."""
     await bot.add_cog(Links(bot))
