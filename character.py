@@ -24,6 +24,20 @@ _JSON_CACHE: Dict[str, Tuple[float, Any]] = {}
 _STATIC_CACHE: Dict[str, Any] = {}
 
 
+def _preload_static_cache() -> None:
+    for filename in ("races.json", "classes.json", "drawbacks.json"):
+        path = DATA_DIR / filename
+        if path.exists() and filename not in _STATIC_CACHE:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    _STATIC_CACHE[filename] = json.load(f)
+            except Exception as exc:
+                logger.error(f"Failed to preload static cache for '{filename}': {exc}")
+
+
+_preload_static_cache()
+
+
 class AsyncReentrantLock:
 
     def __init__(self):
@@ -68,13 +82,14 @@ def get_file_lock(filename: str) -> AsyncReentrantLock:
 
 async def load_json(filename: str, force_reload: bool = False) -> Union[Dict, List, Any]:
     # Fast-path for read-only static rule definitions
-    if filename in ("races.json", "classes.json") and not force_reload and filename in _STATIC_CACHE:
-        return _STATIC_CACHE[filename]
+    if filename in ("races.json", "classes.json", "drawbacks.json") and not force_reload:
+        if filename in _STATIC_CACHE:
+            return _STATIC_CACHE[filename]
 
     lock = get_file_lock(filename)
     async with lock:
         if not force_reload and filename in _JSON_CACHE:
-            return copy.deepcopy(_JSON_CACHE[filename][1])
+            return _JSON_CACHE[filename][1]
 
         path = DATA_DIR / filename
         if not path.exists():
@@ -84,8 +99,8 @@ async def load_json(filename: str, force_reload: bool = False) -> Union[Dict, Li
             async with aiofiles.open(path, "r", encoding="utf-8") as f:
                 content = await f.read()
             data = json.loads(content)
-            _JSON_CACHE[filename] = (time.time(), copy.deepcopy(data))
-            if filename in ("races.json", "classes.json"):
+            _JSON_CACHE[filename] = (time.time(), data)
+            if filename in ("races.json", "classes.json", "drawbacks.json"):
                 _STATIC_CACHE[filename] = data
             return data
         except (json.JSONDecodeError, IOError) as exc:
@@ -100,10 +115,10 @@ async def save_json(filename: str, data: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         _JSON_CACHE[filename] = (time.time(), copy.deepcopy(data))
 
-        # Write to temporary file first
+        # Write to temporary file first using compact indent=2 for lower I/O latency
         tmp_path = DATA_DIR / f"{filename}.tmp"
         async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
-            await f.write(json.dumps(data, indent=4))
+            await f.write(json.dumps(data, indent=2))
 
         # Atomic replacement
         tmp_path.replace(path)
@@ -137,6 +152,24 @@ def get_recommendations(stats: Dict[str, int], classes: List[dict]) -> List[dict
     return sorted(recommendations, key=lambda x: x["score"], reverse=True)[:5]
 
 
+def generate_recommendation_embed(
+    recommendations: List[Dict[str, Any]], stats: Dict[str, int]
+) -> discord.Embed:
+    embed = discord.Embed(
+        title="Class Recommendations",
+        description="Based on your rolled attribute scores, here are the top recommended classes:",
+        color=discord.Color.blue(),
+    )
+    lines = []
+    for idx, rec in enumerate(recommendations, start=1):
+        name = rec.get("name", "Unknown")
+        lines.append(f"**{idx}.** `{name}`")
+
+    embed.add_field(name="Top Matches", value="\n".join(lines) if lines else "No recommendations available.", inline=False)
+    embed.set_footer(text="Assign a class with !char edit class <name> <class> • Toggle with !rec")
+    return embed
+
+
 class InteractionContextAdapter:
 
     def __init__(self, interaction: discord.Interaction, bot: Optional[commands.Bot] = None):
@@ -158,8 +191,7 @@ class InteractionContextAdapter:
             followup_kwargs = kwargs.copy()
             if "delete_after" in followup_kwargs:
                 del followup_kwargs["delete_after"]
-            if delete_after:
-                followup_kwargs["wait"] = True
+            followup_kwargs["wait"] = True
             msg = await self.interaction.followup.send(*args, **followup_kwargs)
             if delete_after and msg:
                 async def _delayed_delete():
@@ -405,16 +437,9 @@ async def handle_create(cog: Any, ctx: Any, race_name: Optional[str] = None) -> 
 
 async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
     user_id = ctx.author.id
-    if user_id not in cog.active_creations:
-        await ctx.send(embed=discord.Embed(
-            title="No Character Creation Active",
-            description="Use `!char create <race>` first to start character creation.",
-            color=discord.Color.red()
-        ))
-        return
-
-    creation = cog.active_creations[user_id]
-    dice_points = creation["dice_points"]
+    in_creation = user_id in cog.active_creations
+    creation = cog.active_creations[user_id] if in_creation else None
+    dice_points = creation["dice_points"] if in_creation else 32
 
     if not args:
         avg = dice_points // 6
@@ -424,12 +449,16 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
 
         embed = discord.Embed(
             title="Distribute Attribute Dice",
-            description=f"You have **{dice_points}** dice points to distribute among 6 stats.\nMinimum **3**, Maximum **18** dice per stat.",
+            description=(
+                f"You have **{dice_points}** dice points to distribute among 6 stats.\nMinimum **3**, Maximum **18** dice per stat."
+                if in_creation else
+                "Distribute dice across all 6 attributes (minimum **3**, maximum **18** per stat)."
+            ),
             color=discord.Color.blue()
         )
         embed.add_field(name="Usage", value="`!char dr <STR> <val> <DEX> <val> ...` or `!char dr 6 6 6 6 6 10`", inline=False)
-        embed.add_field(name="Example (Balanced)", value=f"`!char dr {example_cmd}`", inline=False)
-        embed.set_footer(text="Tip: You can also pass 6 raw numbers: !char dr 6 6 6 6 6 10")
+        embed.add_field(name="Example", value=f"`!char dr {example_cmd}`", inline=False)
+        embed.set_footer(text="Tip: You can pass either key-value pairs (STR 6 DEX 4...) or 6 raw numbers.")
         await ctx.send(embed=embed)
         return
 
@@ -461,12 +490,13 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
             return
     else:
         embed = discord.Embed(title="Invalid Distribution Format", color=discord.Color.red())
-        embed.description = f"Please provide exactly 6 numbers or 6 key-value pairs.\nTarget Total: **{dice_points}**"
+        target_str = f"Target Total: **{dice_points}**" if in_creation else "Example: `STR 6 DEX 4 CON 5 INT 5 WIS 7 CHA 5`"
+        embed.description = f"Please provide exactly 6 numbers or 6 key-value pairs.\n{target_str}"
         await ctx.send(embed=embed)
         return
 
     current_total = sum(stats_to_set.values())
-    if current_total != creation["dice_points"]:
+    if in_creation and current_total != creation["dice_points"]:
         diff = creation["dice_points"] - current_total
         status = "missing" if diff > 0 else "too many"
         await ctx.send(
@@ -486,7 +516,7 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
     final_stats: Dict[str, int] = {}
     base_stats_dict: Dict[str, int] = {}
     raw_rolls_dict: Dict[str, List[int]] = {}
-    racial_mods = parse_racial_modifiers(creation["race_data"])
+    racial_mods = parse_racial_modifiers(creation["race_data"]) if in_creation else {k: 0 for k in keys}
     rolls_text = ""
 
     for stat, num in stats_to_set.items():
@@ -508,53 +538,42 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
         mod_str = f" {'+' if mod >= 0 else '-'} {abs(mod)} (Race)" if mod != 0 else ""
         rolls_text += f"**{stat}**: [{full_list_str}] -> **{base_total}**{mod_str} = **{final_val}**\n"
 
-    creation["stats"] = final_stats
-    creation["stat_history"] = rolls_text
+    race_name = creation.get("race_name", "Standard") if in_creation else "Standard"
 
-    # Record distribution statistics for analytics & charts
-    try:
-        from stat_analytics import record_dr_roll
-        author = getattr(ctx, "author", getattr(ctx, "user", None))
-        if author:
-            await record_dr_roll(
-                user=author,
-                race=creation.get("race_name", "Unknown"),
-                dice_points=dice_points,
-                stats_allocated=stats_to_set,
-                raw_rolls=raw_rolls_dict,
-                base_stats=base_stats_dict,
-                racial_modifiers=racial_mods,
-                final_stats=final_stats
-            )
-    except Exception as exc:
-        logger.error(f"Error recording DR roll analytics: {exc}")
+    if in_creation:
+        creation["stats"] = final_stats
+        creation["stat_history"] = rolls_text
+        embed_stats = generate_stat_embed(cog.bot, ctx, creation, rolls_text, racial_mods)
+        # Attach interactive button view if flexible racial bonus exists (+2 Any)
+        view = None
+        if racial_mods.get("ANY") and racial_mods["ANY"] > 0:
+            view = BonusSelectView(cog, ctx, creation, rolls_text, racial_mods["ANY"])
 
-    embed_stats = generate_stat_embed(cog.bot, ctx, creation, rolls_text, racial_mods)
+        sent_msg = await ctx.send(embed=embed_stats, view=view)
+        if view:
+            view.message = sent_msg
 
-    # Attach interactive button view if flexible racial bonus exists (+2 Any)
-    view = None
-    if racial_mods.get("ANY") and racial_mods["ANY"] > 0:
-        view = BonusSelectView(cog, ctx, creation, rolls_text, racial_mods["ANY"])
+        # Class recommendations if enabled in user settings
+        settings = await load_json("user_settings.json")
+        user_settings = settings.get(str(ctx.author.id), {})
 
-    sent_msg = await ctx.send(embed=embed_stats, view=view)
-    if view:
-        view.message = sent_msg
-
-    # Class recommendations if enabled in user settings
-    settings = await load_json("user_settings.json")
-    user_settings = settings.get(str(ctx.author.id), {})
-
-    if user_settings.get("show_recommendations", True):
-        classes_data = await load_json("classes.json")
-        classes = classes_data.get("classes", []) if isinstance(classes_data, dict) else []
-        recommendations = get_recommendations(final_stats, classes)
-        if recommendations:
-            embed_recs = discord.Embed(
-                title="Class Recommendations",
-                description="\n".join([f"• **{r['name']}**" for r in recommendations]),
-                color=discord.Color.blue()
-            )
-            await ctx.send(embed=embed_recs)
+        if user_settings.get("show_recommendations", True):
+            classes_data = await load_json("classes.json")
+            classes = classes_data.get("classes", []) if isinstance(classes_data, dict) else []
+            recommendations = get_recommendations(final_stats, classes)
+            if recommendations:
+                embed_recs = generate_recommendation_embed(recommendations, final_stats)
+                await ctx.send(embed=embed_recs)
+    else:
+        # Standalone roll results embed (Physical & Mental results explicitly displayed and saved)
+        standalone_creation = {
+            "stats": final_stats,
+            "race_name": race_name,
+            "race_data": {}
+        }
+        embed_stats = generate_stat_embed(cog.bot, ctx, standalone_creation, rolls_text, racial_mods)
+        embed_stats.set_footer(text="Use !char create <race> for character creation.")
+        await ctx.send(embed=embed_stats)
 
 
 async def _adjust_creation_stat(cog: Any, ctx: Any, args: Tuple[Any, ...], multiplier: int) -> None:
@@ -604,6 +623,21 @@ async def handle_add_stat(cog: Any, ctx: Any, *args: str) -> None:
 
 async def handle_remove_stat(cog: Any, ctx: Any, *args: str) -> None:
     await _adjust_creation_stat(cog, ctx, args, multiplier=-1)
+
+
+async def handle_cancel_char(cog: Any, ctx: Any) -> None:
+    user_id = ctx.author.id
+    if user_id not in cog.active_creations:
+        await ctx.send("You do not have an active character creation session to cancel.")
+        return
+
+    del cog.active_creations[user_id]
+    embed = discord.Embed(
+        title="Creation Session Cancelled",
+        description="Your active character creation session has been cancelled and cleared.",
+        color=discord.Color.red()
+    )
+    await ctx.send(embed=embed)
 
 
 # =============================================================================
@@ -1063,6 +1097,9 @@ async def handle_delete_char(cog: Any, ctx: Any, *, name: Optional[str] = None) 
             await ctx.send(f"Character **{name}** not found in your roster.")
             return
 
+        if not characters[uid]:
+            del characters[uid]
+
         await save_json("characters.json", characters)
 
     embed = discord.Embed(
@@ -1100,11 +1137,11 @@ class CharacterCog(commands.Cog, name="Character"):
         embed = discord.Embed(title="Character Commands", color=discord.Color.gold())
         embed.description = (
             "**Creation & Recovery**\n"
-            "`!char create <race>` - Start creation (Admin Only)\n"
+            "`!char create <race>` - Start creation\n"
             "`!char dr <stats>` - Distribute dice\n"
-            "`!char stats [graph] [user]` - View stat analytics & charts\n"
             "`!char add/remove <stat> <val>` - Tweak stats\n"
             "`!char save <name>` - Finalize character\n"
+            "`!char cancel` - Cancel active creation session\n"
             "`!char kia <name>` - Calculate starting XP for fallen character\n"
             "`!char mia <name>` - Calculate starting XP for missing character\n\n"
             "**Management**\n"
@@ -1129,30 +1166,11 @@ class CharacterCog(commands.Cog, name="Character"):
 
     @char.command(name="dr")
     async def distribute(self, ctx: commands.Context, *args: str) -> None:
-        if args and args[0].lower() in ("stats", "analytics", "graph", "chart"):
-            cog = self.bot.get_cog("StatAnalytics") or self.bot.get_cog("DRAnalytics")
-            if cog:
-                if args[0].lower() in ("graph", "chart"):
-                    target = args[1] if len(args) > 1 else None
-                    await cog.stats_graph(ctx, target=target)
-                else:
-                    target = args[1] if len(args) > 1 else None
-                    await cog.stats_group(ctx, target=target)
-                return
         await handle_distribute(self, ctx, *args)
 
-    @char.command(name="stats", aliases=["analytics"])
-    async def char_stats(self, ctx: commands.Context, *args: str) -> None:
-        cog = self.bot.get_cog("StatAnalytics") or self.bot.get_cog("DRAnalytics")
-        if cog:
-            if args and args[0].lower() in ("graph", "chart", "plot"):
-                target = args[1] if len(args) > 1 else None
-                await cog.stats_graph(ctx, target=target)
-            else:
-                target = args[0] if args else None
-                await cog.stats_group(ctx, target=target)
-        else:
-            await ctx.send("Analytics system is currently unavailable.")
+    @commands.command(name="dr")
+    async def dr_root(self, ctx: commands.Context, *args: str) -> None:
+        await self.distribute(ctx, *args)
 
     @char.command(name="add")
     async def add_stat(self, ctx: commands.Context, *args: str) -> None:
@@ -1165,6 +1183,10 @@ class CharacterCog(commands.Cog, name="Character"):
     @char.command(name="save")
     async def save_char(self, ctx: commands.Context, *, name: Optional[str] = None) -> None:
         await handle_save_char(self, ctx, name=name)
+
+    @char.command(name="cancel")
+    async def cancel_creation(self, ctx: commands.Context) -> None:
+        await handle_cancel_char(self, ctx)
 
     @char.command(name="kia")
     async def kia(self, ctx: commands.Context, *, char_name: str) -> None:
@@ -1409,6 +1431,11 @@ class CharacterCog(commands.Cog, name="Character"):
         adapter = InteractionContextAdapter(interaction, self.bot)
         await handle_save_char(self, adapter, name=name)
 
+    @char_group.command(name="cancel", description="Cancel and clear your active character creation session")
+    async def slash_cancel(self, interaction: discord.Interaction) -> None:
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await handle_cancel_char(self, adapter)
+
     @char_group.command(name="rename", description="Rename an existing character")
     @app_commands.describe(current_name="Current name of your character", new_name="New name for your character")
     async def slash_rename(self, interaction: discord.Interaction, current_name: str, new_name: str) -> None:
@@ -1472,6 +1499,13 @@ class CharacterCog(commands.Cog, name="Character"):
         if cog:
             return await cog._kia_character_autocomplete(interaction, current)
         return []
+
+    @app_commands.command(name="dr", description="Distribute dice points to attributes (e.g. 'STR 6 DEX 4 ...' or '6 6 6 6 6 10')")
+    @app_commands.describe(distribution="Dice distribution values (e.g. 'STR 6 DEX 4 CON 5 INT 5 WIS 7 CHA 5' or '6 6 6 6 6 10')")
+    async def slash_dr(self, interaction: discord.Interaction, distribution: str) -> None:
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        args = distribution.split()
+        await handle_distribute(self, adapter, *args)
 
     @app_commands.command(name="rec", description="Toggle automatic class recommendations during character creation")
     @app_commands.describe(mode="Enable (open) or disable (close) recommendations")

@@ -24,7 +24,7 @@ if sys.platform == "win32":
 load_dotenv(Path(__file__).parent / ".env")
 
 # Bot Token & Command Prefixes
-TOKEN = os.getenv("DISCORD_TOKEN_TEST") or os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN_TEST")
 PREFIXES: List[str] = ["!mineria ", "!m ", "!"]
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,6 @@ class MineriaBot(commands.Bot):
             "error_handler", # Global command error dispatcher and user notices
             "admin",         # Command guard permissions and admin suite (!admin)
             "character",     # Unified character creation, distribution, and sheet management (!char)
-            "stat_analytics" # Distribution roll statistics, analytics, and matplotlib charts (!stats)
         ]
 
         loaded_extensions: List[str] = []

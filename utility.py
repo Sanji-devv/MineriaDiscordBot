@@ -158,13 +158,18 @@ def format_number(val: Any) -> str:
 # =============================================================================
 
 def find_sheet_character(
-    query: str, data: List[Dict[str, Any]]
+    query: str,
+    data: List[Dict[str, Any]],
+    exact_map: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
     clean_target = normalize_name(query)
     if not clean_target or not data:
         return None, []
 
-    # Stage 1: Exact match
+    # Stage 1: O(1) fast exact match via index map or direct scan
+    if exact_map and clean_target in exact_map:
+        return exact_map[clean_target], []
+
     for char in data:
         if char.get("norm_name") == clean_target:
             return char, []
@@ -234,15 +239,21 @@ class OneTimeCommands(commands.Cog, name="Utility"):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._session: Optional[aiohttp.ClientSession] = None
+        self._fetch_lock = asyncio.Lock()
         self._cache_data: List[Dict[str, Any]] = []
         self._cache_active: List[Dict[str, Any]] = []
         self._cache_graveyard: List[Dict[str, Any]] = []
+        self._cache_player_active: Dict[str, List[Dict[str, Any]]] = {}
+        self._cache_player_graveyard: Dict[str, List[Dict[str, Any]]] = {}
         self._cache_players: Dict[str, str] = {}
+        self._cache_player_keys: List[str] = []
         self._cache_char_map: Dict[str, List[Dict[str, Any]]] = {}
         self._cache_gm_counts: Dict[str, int] = {}
         self._cache_kia_data: List[Dict[str, Any]] = []
+        self._cache_kia_exact_map: Dict[str, Dict[str, Any]] = {}
         self._cache_skipped: int = 0
         self._cache_timestamp: float = 0.0
+        self._cache_ttl: float = 60.0
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -250,179 +261,194 @@ class OneTimeCommands(commands.Cog, name="Utility"):
             self._session = aiohttp.ClientSession(timeout=timeout)
         return self._session
 
+    async def cog_load(self) -> None:
+        # Pre-fetch XP and report sheets in background so caches and autocompletes are primed immediately
+        asyncio.create_task(self.fetch_xp_data(force_refresh=True))
+
     async def cog_unload(self) -> None:
         if self._session and not self._session.closed:
             await self._session.close()
 
-    async def fetch_xp_data(self, force_refresh: bool = True) -> Tuple[List[Dict[str, Any]], int]:
+    async def fetch_xp_data(self, force_refresh: bool = False) -> Tuple[List[Dict[str, Any]], int]:
         now = time.time()
-
-        if not XP_SHEET_URL:
-            logger.error("XP_SHEET_URL environment variable is not configured.")
+        # Fast path: Serve from in-memory cache if within TTL and not explicitly forced
+        if not force_refresh and self._cache_data and (now - self._cache_timestamp < self._cache_ttl):
             return self._cache_data, self._cache_skipped
 
-        try:
-            session = await self._get_session()
-            async with session.get(XP_SHEET_URL) as resp:
-                if resp.status != 200:
-                    logger.error(f"Failed to fetch XP sheet: HTTP {resp.status}")
-                    return self._cache_data, self._cache_skipped
-                xp_content = await resp.text()
+        async with self._fetch_lock:
+            # Re-check timestamp after acquiring lock to deduplicate concurrent requests
+            now = time.time()
+            if not force_refresh and self._cache_data and (now - self._cache_timestamp < self._cache_ttl):
+                return self._cache_data, self._cache_skipped
 
-            report_content = None
-            if REPORTS_SHEET_URL:
-                try:
-                    async with session.get(REPORTS_SHEET_URL) as r_resp:
-                        if r_resp.status == 200:
-                            report_content = await r_resp.text()
-                        else:
-                            logger.warning(f"Failed to fetch Reports sheet: HTTP {r_resp.status}")
-                except Exception as exc:
-                    logger.warning(f"Error fetching Reports sheet: {exc}")
+            if not XP_SHEET_URL:
+                logger.error("XP_SHEET_URL environment variable is not configured.")
+                return self._cache_data, self._cache_skipped
 
-        except (asyncio.TimeoutError, TimeoutError, aiohttp.ClientError) as exc:
-            err_type = type(exc).__name__
-            err_msg = f"{err_type}: {exc}" if str(exc) else err_type
-            logger.warning(f"Network timeout or connection error fetching XP sheet ({err_msg}). Using cached data.")
+            try:
+                session = await self._get_session()
+                async with session.get(XP_SHEET_URL) as resp:
+                    if resp.status != 200:
+                        logger.error(f"Failed to fetch XP sheet: HTTP {resp.status}")
+                        return self._cache_data, self._cache_skipped
+                    xp_content = await resp.text()
+
+                report_content = None
+                if REPORTS_SHEET_URL:
+                    try:
+                        async with session.get(REPORTS_SHEET_URL) as r_resp:
+                            if r_resp.status == 200:
+                                report_content = await r_resp.text()
+                            else:
+                                logger.warning(f"Failed to fetch Reports sheet: HTTP {r_resp.status}")
+                    except Exception as exc:
+                        logger.warning(f"Error fetching Reports sheet: {exc}")
+
+            except (asyncio.TimeoutError, TimeoutError, aiohttp.ClientError) as exc:
+                err_type = type(exc).__name__
+                err_msg = f"{err_type}: {exc}" if str(exc) else err_type
+                logger.warning(f"Network timeout or connection error fetching XP sheet ({err_msg}). Using cached data.")
+                return self._cache_data, self._cache_skipped
+            except Exception as exc:
+                err_type = type(exc).__name__
+                err_msg = f"{err_type}: {exc}" if str(exc) else err_type
+                logger.error(f"Exception encountered while fetching XP data: {err_msg}", exc_info=True)
+                return self._cache_data, self._cache_skipped
+
+            xp_reader = csv.reader(io.StringIO(xp_content))
+            xp_rows = list(xp_reader)
+            if not xp_rows:
+                return self._cache_data, self._cache_skipped
+
+            skipped_count = 0
+            parsed_compat = []
+            parsed_active = []
+            parsed_graveyard = []
+            parsed_kia_data = []
+            players_dict = {}
+            char_map = {}
+            player_active_map: Dict[str, List[Dict[str, Any]]] = {}
+            player_graveyard_map: Dict[str, List[Dict[str, Any]]] = {}
+            kia_exact_map: Dict[str, Dict[str, Any]] = {}
+
+            for r_idx, row in enumerate(xp_rows[1:], start=2):
+                # Left Table: Columns B to N (Active Roster)
+                if len(row) > 2:
+                    char_name = row[1].strip() if len(row) > 1 else ""
+                    player_name = row[2].strip() if len(row) > 2 else ""
+
+                    if char_name and player_name:
+                        norm_p = normalize_name(player_name)
+                        norm_c = normalize_name(char_name)
+                        if norm_p not in players_dict:
+                            players_dict[norm_p] = player_name
+
+                        active_entry = {
+                            "row": r_idx,
+                            "char_name": char_name,
+                            "player_name": player_name,
+                            "norm_player": norm_p,
+                            "norm_char": norm_c,
+                            "xp": row[3].strip() if len(row) > 3 else "0",
+                            "rank": row[4].strip() if len(row) > 4 else "-",
+                            "level": row[5].strip() if len(row) > 5 else "1",
+                            "missions": row[6].strip() if len(row) > 6 else "0",
+                            "rank_xp": row[7].strip() if len(row) > 7 else "0",
+                            "task_xp": row[8].strip() if len(row) > 8 else "0",
+                            "report_xp": row[9].strip() if len(row) > 9 else "0",
+                            "bailiff_xp": row[10].strip() if len(row) > 10 else "0",
+                            "ex_xp": row[11].strip() if len(row) > 11 else "0",
+                            "wiki_xp": row[12].strip() if len(row) > 12 else "0",
+                            "inactive_xp": row[13].strip() if len(row) > 13 else "0",
+                            "type": "Active"
+                        }
+                        parsed_active.append(active_entry)
+                        player_active_map.setdefault(norm_p, []).append(active_entry)
+                        parsed_compat.append({
+                            "char_name": char_name,
+                            "player_name": player_name,
+                            "xp": active_entry["xp"],
+                            "rank": active_entry["rank"],
+                        })
+                        char_map.setdefault(norm_c, []).append(active_entry)
+
+                        # Compute KIA/MIA Base and Task XP
+                        k_full_xp = 0.0
+                        for idx in [10, 11, 12]:  # Fixed XP: K, L, M
+                            if idx < len(row):
+                                k_full_xp += parse_xp_value(row[idx])
+                        k_task_xp = 0.0
+                        for idx in [8, 9]:  # Task XP: I, J
+                            if idx < len(row):
+                                k_task_xp += parse_xp_value(row[idx])
+
+                        kia_entry = {
+                            "raw_name": char_name,
+                            "norm_name": norm_c,
+                            "full_xp": k_full_xp,
+                            "task_xp": k_task_xp
+                        }
+                        parsed_kia_data.append(kia_entry)
+                        if norm_c not in kia_exact_map:
+                            kia_exact_map[norm_c] = kia_entry
+                    elif len(row) >= 5 and (not char_name or not player_name):
+                        skipped_count += 1
+
+                # Right Table: Columns P to V (Archived / Graveyard / Retired Roster)
+                if len(row) > 16:
+                    char_name = row[15].strip() if len(row) > 15 else ""
+                    player_name = row[16].strip() if len(row) > 16 else ""
+
+                    if char_name and player_name:
+                        norm_p = normalize_name(player_name)
+                        norm_c = normalize_name(char_name)
+                        if norm_p not in players_dict:
+                            players_dict[norm_p] = player_name
+
+                        graveyard_entry = {
+                            "row": r_idx,
+                            "char_name": char_name,
+                            "player_name": player_name,
+                            "norm_player": norm_p,
+                            "norm_char": norm_c,
+                            "xp": row[17].strip() if len(row) > 17 else "0",
+                            "status": row[18].strip() if len(row) > 18 else "-",
+                            "games": row[19].strip() if len(row) > 19 else "0",
+                            "missions": row[20].strip() if len(row) > 20 else "0",
+                            "reports": row[21].strip() if len(row) > 21 else "0",
+                            "type": "Archived"
+                        }
+                        parsed_graveyard.append(graveyard_entry)
+                        player_graveyard_map.setdefault(norm_p, []).append(graveyard_entry)
+                        char_map.setdefault(norm_c, []).append(graveyard_entry)
+
+            # Parse Mission Reports Column AM (GM Column, idx 38)
+            gm_counts = {}
+            if report_content:
+                report_reader = csv.reader(io.StringIO(report_content))
+                report_rows = list(report_reader)
+                for row in report_rows[1:]:
+                    if len(row) > 38:
+                        gm_val = row[38].strip()
+                        if gm_val:
+                            norm_gm = normalize_name(gm_val)
+                            gm_counts[norm_gm] = gm_counts.get(norm_gm, 0) + 1
+
+            self._cache_data = parsed_compat
+            self._cache_active = parsed_active
+            self._cache_graveyard = parsed_graveyard
+            self._cache_player_active = player_active_map
+            self._cache_player_graveyard = player_graveyard_map
+            self._cache_players = players_dict
+            self._cache_player_keys = list(players_dict.keys())
+            self._cache_char_map = char_map
+            self._cache_gm_counts = gm_counts
+            self._cache_kia_data = parsed_kia_data
+            self._cache_kia_exact_map = kia_exact_map
+            self._cache_skipped = skipped_count
+            self._cache_timestamp = now
+
             return self._cache_data, self._cache_skipped
-        except Exception as exc:
-            err_type = type(exc).__name__
-            err_msg = f"{err_type}: {exc}" if str(exc) else err_type
-            logger.error(f"Exception encountered while fetching XP data: {err_msg}", exc_info=True)
-            return self._cache_data, self._cache_skipped
-
-        xp_reader = csv.reader(io.StringIO(xp_content))
-        xp_rows = list(xp_reader)
-        if not xp_rows:
-            return self._cache_data, self._cache_skipped
-
-        skipped_count = 0
-        parsed_compat = []
-        parsed_active = []
-        parsed_graveyard = []
-        parsed_kia_data = []
-        players_dict = {}
-        char_map = {}
-
-        for r_idx, row in enumerate(xp_rows[1:], start=2):
-            # Left Table: Columns B to N (Active Roster)
-            if len(row) > 2:
-                char_name = row[1].strip() if len(row) > 1 else ""
-                player_name = row[2].strip() if len(row) > 2 else ""
-
-                if char_name and player_name:
-                    norm_p = normalize_name(player_name)
-                    norm_c = normalize_name(char_name)
-                    if norm_p not in players_dict:
-                        players_dict[norm_p] = player_name
-
-                    active_entry = {
-                        "row": r_idx,
-                        "char_name": char_name,
-                        "player_name": player_name,
-                        "norm_player": norm_p,
-                        "norm_char": norm_c,
-                        "xp": row[3].strip() if len(row) > 3 else "0",
-                        "rank": row[4].strip() if len(row) > 4 else "-",
-                        "level": row[5].strip() if len(row) > 5 else "1",
-                        "missions": row[6].strip() if len(row) > 6 else "0",
-                        "rank_xp": row[7].strip() if len(row) > 7 else "0",
-                        "task_xp": row[8].strip() if len(row) > 8 else "0",
-                        "report_xp": row[9].strip() if len(row) > 9 else "0",
-                        "bailiff_xp": row[10].strip() if len(row) > 10 else "0",
-                        "ex_xp": row[11].strip() if len(row) > 11 else "0",
-                        "wiki_xp": row[12].strip() if len(row) > 12 else "0",
-                        "inactive_xp": row[13].strip() if len(row) > 13 else "0",
-                        "type": "Active"
-                    }
-                    parsed_active.append(active_entry)
-                    parsed_compat.append({
-                        "char_name": char_name,
-                        "player_name": player_name,
-                        "xp": active_entry["xp"],
-                        "rank": active_entry["rank"],
-                    })
-                    char_map.setdefault(norm_c, []).append(active_entry)
-
-                    # Compute KIA/MIA Base and Task XP
-                    k_full_xp = 0.0
-                    for idx in [10, 11, 12]:  # Fixed XP: K, L, M
-                        if idx < len(row):
-                            k_full_xp += parse_xp_value(row[idx])
-                    k_task_xp = 0.0
-                    for idx in [8, 9]:  # Task XP: I, J
-                        if idx < len(row):
-                            k_task_xp += parse_xp_value(row[idx])
-
-                    parsed_kia_data.append({
-                        "raw_name": char_name,
-                        "norm_name": norm_c,
-                        "full_xp": k_full_xp,
-                        "task_xp": k_task_xp
-                    })
-                elif len(row) >= 5 and (not char_name or not player_name):
-                    skipped_count += 1
-
-            # Right Table: Columns P to V (Archived / Graveyard / Retired Roster)
-            if len(row) > 16:
-                char_name = row[15].strip() if len(row) > 15 else ""
-                player_name = row[16].strip() if len(row) > 16 else ""
-
-                if char_name and player_name:
-                    norm_p = normalize_name(player_name)
-                    norm_c = normalize_name(char_name)
-                    if norm_p not in players_dict:
-                        players_dict[norm_p] = player_name
-
-                    graveyard_entry = {
-                        "row": r_idx,
-                        "char_name": char_name,
-                        "player_name": player_name,
-                        "norm_player": norm_p,
-                        "norm_char": norm_c,
-                        "xp": row[17].strip() if len(row) > 17 else "0",
-                        "status": row[18].strip() if len(row) > 18 else "-",
-                        "games": row[19].strip() if len(row) > 19 else "0",
-                        "missions": row[20].strip() if len(row) > 20 else "0",
-                        "reports": row[21].strip() if len(row) > 21 else "0",
-                        "type": "Archived"
-                    }
-                    parsed_graveyard.append(graveyard_entry)
-                    char_map.setdefault(norm_c, []).append(graveyard_entry)
-
-        # Parse Mission Reports Column AM (GM Column, idx 38)
-        gm_counts = {}
-        report_rows = None
-        if report_content:
-            report_reader = csv.reader(io.StringIO(report_content))
-            report_rows = list(report_reader)
-            for row in report_rows[1:]:
-                if len(row) > 38:
-                    gm_val = row[38].strip()
-                    if gm_val:
-                        norm_gm = normalize_name(gm_val)
-                        gm_counts[norm_gm] = gm_counts.get(norm_gm, 0) + 1
-
-        self._cache_data = parsed_compat
-        self._cache_active = parsed_active
-        self._cache_graveyard = parsed_graveyard
-        self._cache_players = players_dict
-        self._cache_char_map = char_map
-        self._cache_gm_counts = gm_counts
-        self._cache_kia_data = parsed_kia_data
-        self._cache_skipped = skipped_count
-        self._cache_timestamp = now
-
-        # Immediately free large temporary CSV buffers and invoke GC
-        del xp_content
-        if report_content is not None:
-            del report_content
-        del xp_rows
-        if report_rows is not None:
-            del report_rows
-        gc.collect()
-
-        return self._cache_data, self._cache_skipped
 
     # =========================================================================
     # SECTION 4: GM PLAYER TRACKER (!gm, /gm)
@@ -543,7 +569,7 @@ class OneTimeCommands(commands.Cog, name="Utility"):
 
         # 5. Not found fallback with suggestions
         if not target_player:
-            close_matches = difflib.get_close_matches(query_norm, list(self._cache_players.keys()), n=4, cutoff=0.5)
+            close_matches = difflib.get_close_matches(query_norm, self._cache_player_keys, n=4, cutoff=0.5)
             embed = discord.Embed(
                 title="Player Not Found",
                 description=f"No record found for **{raw_query}** on the Player XP Tracker.",
@@ -559,8 +585,8 @@ class OneTimeCommands(commands.Cog, name="Utility"):
 
         # Build player overview
         target_norm = normalize_name(target_player)
-        active_list = [c for c in self._cache_active if c["norm_player"] == target_norm]
-        graveyard_list = [c for c in self._cache_graveyard if c["norm_player"] == target_norm]
+        active_list = self._cache_player_active.get(target_norm, [])
+        graveyard_list = self._cache_player_graveyard.get(target_norm, [])
         total_chars = len(active_list) + len(graveyard_list)
 
         kia_count = sum(1 for c in graveyard_list if "kia" in c["status"].lower())
@@ -663,7 +689,7 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                     await ctx.send("Sheet data is empty.")
                     return
 
-                matched_char, candidates = find_sheet_character(char_name, data)
+                matched_char, candidates = find_sheet_character(char_name, data, exact_map=self._cache_kia_exact_map)
 
                 if not matched_char:
                     if candidates:
@@ -829,6 +855,42 @@ class OneTimeCommands(commands.Cog, name="Utility"):
         self, interaction: discord.Interaction, current: str
     ) -> List[app_commands.Choice[str]]:
         return await self._kia_character_autocomplete(interaction, current)
+
+    @app_commands.command(name="gm", description="[Admin] Query player GM sessions and character history")
+    @app_commands.describe(player_name="Name of the player to query")
+    async def slash_gm(self, interaction: discord.Interaction, player_name: Optional[str] = None) -> None:
+        if interaction.user.id != DEVELOPER_ID and not await is_user_authorized(self.bot, interaction.user):
+            await interaction.response.send_message("This command is restricted to administrators.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        adapter = InteractionContextAdapter(interaction, self.bot)
+        await self.gm_player_command(adapter, player_query=player_name)
+
+    async def _gm_player_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> List[app_commands.Choice[str]]:
+        if not self._cache_players:
+            try:
+                await self.fetch_xp_data()
+            except Exception:
+                return []
+        if not self._cache_players:
+            return []
+        curr_lower = normalize_name(current)
+        choices = []
+        for norm_p, player_name in self._cache_players.items():
+            if not curr_lower or curr_lower in norm_p:
+                choices.append(app_commands.Choice(name=player_name[:100], value=player_name[:100]))
+                if len(choices) >= 25:
+                    break
+        return choices
+
+    @slash_gm.autocomplete("player_name")
+    async def slash_gm_player_auto(
+        self, interaction: discord.Interaction, current: str
+    ) -> List[app_commands.Choice[str]]:
+        return await self._gm_player_autocomplete(interaction, current)
 
 
 KiaCog = OneTimeCommands

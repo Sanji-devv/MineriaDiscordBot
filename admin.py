@@ -187,10 +187,32 @@ def is_command_disabled(cmd_name: str, settings: Dict[str, Any]) -> bool:
     return False
 
 
-async def disable_command(command_name: str) -> Tuple[bool, str]:
+async def disable_command(command_name: str, bot: Optional[commands.Bot] = None) -> Tuple[bool, str]:
     normalized = normalize_command_name(command_name)
     if not normalized:
         return False, "Invalid or empty command name."
+
+    if normalized == "all":
+        if not bot:
+            return False, "Cannot disable all commands without bot context."
+        all_cmds = [cmd.name for cmd in bot.commands if cmd.name not in PROTECTED_COMMANDS and not cmd.hidden]
+        if not all_cmds:
+            return False, "No manageable commands found to disable."
+
+        settings = await get_command_settings(force_reload=True)
+        current_disabled = set(settings.get("disabled_commands", []))
+        newly_disabled = [cmd for cmd in all_cmds if cmd not in current_disabled]
+        if not newly_disabled:
+            return False, "All manageable commands are already disabled."
+
+        current_disabled.update(all_cmds)
+        settings["disabled_commands"] = sorted(list(current_disabled))
+        if DEVELOPER_ID not in settings.setdefault("allowed_users", []):
+            settings["allowed_users"].append(DEVELOPER_ID)
+
+        await save_command_settings(settings)
+        logger.info(f"All commands ({len(all_cmds)}) have been DISABLED by administrator.")
+        return True, f"All manageable commands ({len(all_cmds)}) have been disabled across all servers."
 
     first_word = normalized.split(" ")[0]
     if first_word in PROTECTED_COMMANDS:
@@ -216,6 +238,23 @@ async def enable_command(command_name: str) -> Tuple[bool, str]:
     normalized = normalize_command_name(command_name)
     if not normalized:
         return False, "Invalid or empty command name."
+
+    if normalized == "all":
+        settings = await get_command_settings(force_reload=True)
+        previously_disabled = settings.get("disabled_commands", [])
+        count = len(previously_disabled)
+
+        settings["disabled_commands"] = []
+        if DEVELOPER_ID not in settings.setdefault("allowed_users", []):
+            settings["allowed_users"].append(DEVELOPER_ID)
+
+        await save_command_settings(settings)
+        if count > 0:
+            logger.info(f"All commands ({count}) have been ENABLED by administrator. Previously disabled: {previously_disabled}")
+            return True, f"All disabled commands ({count}) have been successfully re-enabled."
+        else:
+            logger.info("Command Guard reset: All commands are enabled and active.")
+            return True, "All commands are active and unrestricted."
 
     settings = await get_command_settings(force_reload=True)
     disabled = settings.get("disabled_commands", [])
@@ -357,7 +396,15 @@ class Admin(commands.Cog, name="Admin"):
 
     @presence_task.before_loop
     async def before_presence_task(self) -> None:
-        while not self.bot.is_ready():
+        try:
+            if hasattr(self.bot, "wait_until_ready") and callable(self.bot.wait_until_ready):
+                res = self.bot.wait_until_ready()
+                if asyncio.iscoroutine(res):
+                    await res
+        except (RuntimeError, Exception):
+            pass
+
+        while hasattr(self.bot, "is_ready") and callable(self.bot.is_ready) and not self.bot.is_ready():
             await asyncio.sleep(1)
 
 
@@ -374,9 +421,12 @@ class Admin(commands.Cog, name="Admin"):
         embed = discord.Embed(
             title="Admin Panel",
             description=(
-                "`!admin disable <command>` → Disables a command for all users.\n"
-                "`!admin enable <command>` → Re-enables a disabled command.\n"
-                "`!admin list` → Lists all disabled commands."
+                "`!admin disable <command|all>` → Disables a command (or all commands) for all users.\n"
+                "`!admin enable <command|all>` → Re-enables a disabled command (or all commands).\n"
+                "`!admin list` → Lists all disabled commands.\n"
+                "`!admin allow <user>` → Grants user command guard bypass authority.\n"
+                "`!admin remove <user>` → Removes user from bypass list.\n"
+                "`!admin users` → Lists all authorized bypass users."
             ),
             color=discord.Color.blue()
         )
@@ -389,15 +439,20 @@ class Admin(commands.Cog, name="Admin"):
             return
 
         if not command_name:
-            await ctx.send("Usage: `!admin disable <command>` (e.g. `!admin disable char create`)")
+            await ctx.send("Usage: `!admin disable <command|all>` (e.g. `!admin disable char create` or `!admin disable all`)")
             return
 
-        success, message = await disable_command(command_name)
+        success, message = await disable_command(command_name, bot=self.bot)
         if success:
             norm = normalize_command_name(command_name)
+            desc = (
+                "All manageable commands have been disabled across all servers.\nOnly authorized users can execute them."
+                if norm == "all"
+                else f"`{norm}` has been disabled across all servers.\nOnly authorized users can execute it."
+            )
             embed = discord.Embed(
-                title="Command Disabled",
-                description=f"`{norm}` has been disabled across all servers.\nOnly authorized users can execute it.",
+                title="Commands Disabled" if norm == "all" else "Command Disabled",
+                description=desc,
                 color=discord.Color.red()
             )
             await ctx.send(embed=embed)
@@ -411,15 +466,20 @@ class Admin(commands.Cog, name="Admin"):
             return
 
         if not command_name:
-            await ctx.send("Usage: `!admin enable <command>` (e.g. `!admin enable char create`)")
+            await ctx.send("Usage: `!admin enable <command|all>` (e.g. `!admin enable char create` or `!admin enable all`)")
             return
 
         success, message = await enable_command(command_name)
         if success:
             norm = normalize_command_name(command_name)
+            desc = (
+                "All commands have been re-enabled across all servers for all users."
+                if norm == "all"
+                else f"`{norm}` has been re-enabled across all servers for all users."
+            )
             embed = discord.Embed(
-                title="Command Enabled",
-                description=f"`{norm}` has been re-enabled across all servers for all users.",
+                title="All Commands Enabled" if norm == "all" else "Command Enabled",
+                description=desc,
                 color=discord.Color.green()
             )
             await ctx.send(embed=embed)
@@ -440,6 +500,58 @@ class Admin(commands.Cog, name="Admin"):
             embed.description = "\n".join(f"• `{cmd}`" for cmd in disabled)
         else:
             embed.description = "*No commands are currently disabled.*"
+        await ctx.send(embed=embed)
+
+    @admin_group.command(name="allow")
+    async def admin_allow(self, ctx: commands.Context, *, user_arg: Optional[str] = None) -> None:
+        if not await is_user_authorized(self.bot, ctx.author):
+            await ctx.send("This command is restricted to the developer.")
+            return
+
+        if not user_arg:
+            await ctx.send("Usage: `!admin allow <@user or user_id>`")
+            return
+
+        uid = extract_user_id(user_arg)
+        if not uid:
+            await ctx.send("Invalid user ID or mention.")
+            return
+
+        success, message = await add_allowed_user(uid)
+        await ctx.send(message)
+
+    @admin_group.command(name="remove")
+    async def admin_remove(self, ctx: commands.Context, *, user_arg: Optional[str] = None) -> None:
+        if not await is_user_authorized(self.bot, ctx.author):
+            await ctx.send("This command is restricted to the developer.")
+            return
+
+        if not user_arg:
+            await ctx.send("Usage: `!admin remove <@user or user_id>`")
+            return
+
+        uid = extract_user_id(user_arg)
+        if not uid:
+            await ctx.send("Invalid user ID or mention.")
+            return
+
+        success, message = await remove_allowed_user(uid)
+        await ctx.send(message)
+
+    @admin_group.command(name="users")
+    async def admin_users(self, ctx: commands.Context) -> None:
+        if not await is_user_authorized(self.bot, ctx.author):
+            await ctx.send("This command is restricted to the developer.")
+            return
+
+        settings = await get_command_settings()
+        allowed = settings.get("allowed_users", [])
+
+        embed = discord.Embed(title="Authorized Bypass Users", color=discord.Color.blue())
+        if allowed:
+            embed.description = "\n".join(f"• <@{uid}> (`{uid}`)" for uid in allowed)
+        else:
+            embed.description = "*No bypass users configured.*"
         await ctx.send(embed=embed)
 
 

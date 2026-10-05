@@ -456,7 +456,7 @@ class Traits(commands.Cog, name="Traits"):
 
         avatar_url = user.display_avatar.url if (user and getattr(user, "display_avatar", None)) else None
         user_name = getattr(user, "display_name", getattr(user, "name", "Player")) if user else "Player"
-        footer_text = f"Requested by: {user_name} | Mineria RPG • Trait System"
+        footer_text = f"Requested by: {user_name}"
         if avatar_url:
             embed.set_footer(text=footer_text, icon_url=avatar_url)
         else:
@@ -467,7 +467,6 @@ class Traits(commands.Cog, name="Traits"):
     # =========================================================================
     # SECTION 2: COMMAND PARSING & EXECUTION (!trait, !trait reroll)
     # =========================================================================
-
     @commands.group(name="trait", aliases=["traits", "t"], invoke_without_command=True)
     async def trait(self, ctx: commands.Context, *args: str) -> None:
         await self._execute_trait_roll(ctx, *args)
