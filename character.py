@@ -12,17 +12,12 @@ from discord import app_commands
 from discord.ext import commands
 import aiofiles
 from log_handler import logger
-from admin import DEVELOPER_ID, is_user_authorized
 
-# =============================================================================
-# SECTION 1: CORE CONCURRENCY, ATOMIC STORAGE & INTERACTION ADAPTER
-# =============================================================================
-DATA_DIR = Path(__file__).parent / "datas"
+DATA_DIR = Path(__file__).parent / "data"
 if not DATA_DIR.exists():
-    DATA_DIR = Path(__file__).parent / "data"
+    DATA_DIR = Path(__file__).parent / "datas"
 _JSON_CACHE: Dict[str, Tuple[float, Any]] = {}
 _STATIC_CACHE: Dict[str, Any] = {}
-
 
 def _preload_static_cache() -> None:
     for filename in ("races.json", "classes.json", "drawbacks.json"):
@@ -34,9 +29,7 @@ def _preload_static_cache() -> None:
             except Exception as exc:
                 logger.error(f"Failed to preload static cache for '{filename}': {exc}")
 
-
 _preload_static_cache()
-
 
 class AsyncReentrantLock:
 
@@ -70,18 +63,14 @@ class AsyncReentrantLock:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.release()
 
-
 _FILE_LOCKS: Dict[str, AsyncReentrantLock] = {}
-
 
 def get_file_lock(filename: str) -> AsyncReentrantLock:
     if filename not in _FILE_LOCKS:
         _FILE_LOCKS[filename] = AsyncReentrantLock()
     return _FILE_LOCKS[filename]
 
-
 async def load_json(filename: str, force_reload: bool = False) -> Union[Dict, List, Any]:
-    # Fast-path for read-only static rule definitions
     if filename in ("races.json", "classes.json", "drawbacks.json") and not force_reload:
         if filename in _STATIC_CACHE:
             return _STATIC_CACHE[filename]
@@ -107,7 +96,6 @@ async def load_json(filename: str, force_reload: bool = False) -> Union[Dict, Li
             logger.error(f"Failed to load JSON file '{filename}': {exc}")
             raise
 
-
 async def save_json(filename: str, data: Any) -> None:
     lock = get_file_lock(filename)
     async with lock:
@@ -115,20 +103,16 @@ async def save_json(filename: str, data: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         _JSON_CACHE[filename] = (time.time(), copy.deepcopy(data))
 
-        # Write to temporary file first using compact indent=2 for lower I/O latency
         tmp_path = DATA_DIR / f"{filename}.tmp"
         async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
             await f.write(json.dumps(data, indent=2))
 
-        # Atomic replacement
         tmp_path.replace(path)
-
 
 def roll_stat_detailed(num_dice: int) -> Tuple[List[int], List[int]]:
     all_rolls = [random.randint(1, 6) for _ in range(num_dice)]
     kept_rolls = sorted(all_rolls, reverse=True)[:3]
     return all_rolls, kept_rolls
-
 
 def get_recommendations(stats: Dict[str, int], classes: List[dict]) -> List[dict]:
     recommendations = []
@@ -142,7 +126,7 @@ def get_recommendations(stats: Dict[str, int], classes: List[dict]) -> List[dict
         p_score = (sum(p_vals) / len(p_vals)) if p_vals else 0.0
         s_score = (sum(s_vals) / len(s_vals) * 0.5) if s_vals else 0.0
         total_score = p_score + s_score
-        variance = random.uniform(0.95, 1.05)  # Subtle variance to break exact ties naturally
+        variance = random.uniform(0.95, 1.05)
 
         recommendations.append({
             "name": cls.get("name", "Unknown"),
@@ -150,7 +134,6 @@ def get_recommendations(stats: Dict[str, int], classes: List[dict]) -> List[dict
         })
 
     return sorted(recommendations, key=lambda x: x["score"], reverse=True)[:5]
-
 
 def generate_recommendation_embed(
     recommendations: List[Dict[str, Any]], stats: Dict[str, int]
@@ -169,7 +152,6 @@ def generate_recommendation_embed(
     embed.set_footer(text="Assign a class with !char edit class <name> <class> • Toggle with !rec")
     return embed
 
-
 class InteractionContextAdapter:
 
     def __init__(self, interaction: discord.Interaction, bot: Optional[commands.Bot] = None):
@@ -180,6 +162,7 @@ class InteractionContextAdapter:
         self.guild = interaction.guild
         self.channel = interaction.channel
         self.message = getattr(interaction, "message", None)
+        self.command = getattr(interaction, "command", None)
 
     async def defer(self, ephemeral: bool = False) -> None:
         if not self.interaction.response.is_done():
@@ -227,15 +210,10 @@ class InteractionContextAdapter:
 
         return _typing_manager()
 
-
-# =============================================================================
-# SECTION 2: CHARACTER CREATION SESSION ENGINE
-# =============================================================================
-
 class BonusSelectView(discord.ui.View):
 
     def __init__(self, cog: Any, ctx: Any, creation: Dict[str, Any], roll_history: str, bonus_val: int):
-        super().__init__(timeout=86400)  # Active for up to 24 hours
+        super().__init__(timeout=86400)
         self.cog = cog
         self.ctx = ctx
         self.creation = creation
@@ -261,7 +239,6 @@ class BonusSelectView(discord.ui.View):
 
     def make_callback(self, stat: str):
         async def callback(interaction: discord.Interaction) -> None:
-            # Prevent other users from clicking the author's bonus buttons
             if interaction.user.id != self.ctx.author.id:
                 await interaction.response.send_message("This character creation session belongs to another player.", ephemeral=True)
                 return
@@ -274,7 +251,6 @@ class BonusSelectView(discord.ui.View):
                 self.creation["stats"][stat] = 0
             self.creation["stats"][stat] += self.bonus_val
 
-            # Highlight selected stat button and disable the rest
             for child in self.children:
                 if isinstance(child, discord.ui.Button):
                     child.disabled = True
@@ -297,11 +273,9 @@ class BonusSelectView(discord.ui.View):
 
         return callback
 
-
 def parse_racial_modifiers(race_data: dict) -> Dict[str, int]:
     mods = {s: 0 for s in ["STR", "DEX", "CON", "INT", "WIS", "CHA"]}
 
-    # Structured modifiers format
     if "modifiers" in race_data:
         for k, v in race_data["modifiers"].items():
             if k in mods:
@@ -310,7 +284,6 @@ def parse_racial_modifiers(race_data: dict) -> Dict[str, int]:
             mods["ANY"] = race_data["flexible_stat"]
         return mods
 
-    # Unstructured text format parsing
     stat_map = {
         "Strength": "STR", "Dexterity": "DEX", "Constitution": "CON",
         "Intelligence": "INT", "Wisdom": "WIS", "Charisma": "CHA"
@@ -327,7 +300,6 @@ def parse_racial_modifiers(race_data: dict) -> Dict[str, int]:
                         mods[short_code] += int(val)
                         break
     return mods
-
 
 def generate_stat_embed(
     bot: commands.Bot, ctx: Any, creation: Dict[str, Any], rolls_text: str, racial_mods: Dict[str, int]
@@ -377,7 +349,6 @@ def generate_stat_embed(
         embed.set_footer(text="Use !char save <name> to finalize your character.")
     return embed
 
-
 async def handle_create(cog: Any, ctx: Any, race_name: Optional[str] = None) -> None:
     if not race_name:
         await ctx.send("Usage: `!char create <race>` (e.g. `!char create Human` or `!char create Half-Elf`)")
@@ -396,7 +367,6 @@ async def handle_create(cog: Any, ctx: Any, race_name: Optional[str] = None) -> 
         return
 
     race_data = races[target_race]
-    # Calculate dice points budget: 41 - Race Points (minimum 18)
     raw_dice_points = 41 - race_data.get("Race Points", 10)
     dice_points = max(18, raw_dice_points)
 
@@ -415,7 +385,6 @@ async def handle_create(cog: Any, ctx: Any, race_name: Optional[str] = None) -> 
     )
     embed.add_field(name="Dice Points", value=f"**{dice_points}** points available.", inline=True)
 
-    # Balanced distribution example
     avg = dice_points // 6
     rem = dice_points % 6
     ex_parts = [f"{k} {avg + rem if i == 5 else avg}" for i, k in enumerate(["STR", "DEX", "CON", "INT", "WIS", "CHA"])]
@@ -433,7 +402,6 @@ async def handle_create(cog: Any, ctx: Any, race_name: Optional[str] = None) -> 
         embed.set_footer(text="Mineria RPG • Creation Mode")
 
     await ctx.send(embed=embed)
-
 
 async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
     user_id = ctx.author.id
@@ -471,10 +439,8 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
     keys = ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
     stats_to_set: Dict[str, int] = {}
 
-    # Handle 6 sequential numbers shortcut (e.g. "6 6 6 6 6 10" -> STR:6, DEX:6, etc.)
     if len(flat_args) == 6 and all(a.isdigit() for a in flat_args):
         stats_to_set = dict(zip(keys, [int(a) for a in flat_args], strict=True))
-    # Handle key-value pairs (e.g. "STR 10 DEX 6 ...")
     elif len(flat_args) == 12:
         for i in range(0, 12, 2):
             a1, a2 = flat_args[i], flat_args[i + 1]
@@ -544,7 +510,6 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
         creation["stats"] = final_stats
         creation["stat_history"] = rolls_text
         embed_stats = generate_stat_embed(cog.bot, ctx, creation, rolls_text, racial_mods)
-        # Attach interactive button view if flexible racial bonus exists (+2 Any)
         view = None
         if racial_mods.get("ANY") and racial_mods["ANY"] > 0:
             view = BonusSelectView(cog, ctx, creation, rolls_text, racial_mods["ANY"])
@@ -553,7 +518,6 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
         if view:
             view.message = sent_msg
 
-        # Class recommendations if enabled in user settings
         settings = await load_json("user_settings.json")
         user_settings = settings.get(str(ctx.author.id), {})
 
@@ -565,7 +529,6 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
                 embed_recs = generate_recommendation_embed(recommendations, final_stats)
                 await ctx.send(embed=embed_recs)
     else:
-        # Standalone roll results embed (Physical & Mental results explicitly displayed and saved)
         standalone_creation = {
             "stats": final_stats,
             "race_name": race_name,
@@ -574,7 +537,6 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
         embed_stats = generate_stat_embed(cog.bot, ctx, standalone_creation, rolls_text, racial_mods)
         embed_stats.set_footer(text="Use !char create <race> for character creation.")
         await ctx.send(embed=embed_stats)
-
 
 async def _adjust_creation_stat(cog: Any, ctx: Any, args: Tuple[Any, ...], multiplier: int) -> None:
     tokens = [str(a).strip().strip('"\'') for a in args if str(a).strip()]
@@ -616,14 +578,11 @@ async def _adjust_creation_stat(cog: Any, ctx: Any, args: Tuple[Any, ...], multi
     creation["stats"][stat] += (value * multiplier)
     await ctx.send(f"**{stat}** updated to **{creation['stats'][stat]}**.")
 
-
 async def handle_add_stat(cog: Any, ctx: Any, *args: str) -> None:
     await _adjust_creation_stat(cog, ctx, args, multiplier=1)
 
-
 async def handle_remove_stat(cog: Any, ctx: Any, *args: str) -> None:
     await _adjust_creation_stat(cog, ctx, args, multiplier=-1)
-
 
 async def handle_cancel_char(cog: Any, ctx: Any) -> None:
     user_id = ctx.author.id
@@ -638,11 +597,6 @@ async def handle_cancel_char(cog: Any, ctx: Any) -> None:
         color=discord.Color.red()
     )
     await ctx.send(embed=embed)
-
-
-# =============================================================================
-# SECTION 3: CHARACTER SAVING & USER PREFERENCES
-# =============================================================================
 
 async def handle_save_char(cog: Any, ctx: Any, *, name: Optional[str] = None) -> None:
     user_id = ctx.author.id
@@ -671,7 +625,6 @@ async def handle_save_char(cog: Any, ctx: Any, *, name: Optional[str] = None) ->
         if uid not in characters:
             characters[uid] = []
 
-        # Prevent duplicate character names under the same account
         if any(c["name"].lower() == name.lower() for c in characters[uid]):
             await ctx.send(f"You already have a character named **{name}**.")
             return
@@ -713,13 +666,11 @@ async def handle_save_char(cog: Any, ctx: Any, *, name: Optional[str] = None) ->
 
     await ctx.send(embed=embed)
 
-
 async def handle_rec(cog: Any, ctx: Any) -> None:
     embed = discord.Embed(title="Recommendation Settings", color=discord.Color.blue())
     embed.description = "Toggle automatic class recommendations during character creation."
     embed.add_field(name="Commands", value="`!rec open` - Enable\n`!rec close` - Disable")
     await ctx.send(embed=embed)
-
 
 async def handle_rec_open(cog: Any, ctx: Any) -> None:
     uid = str(ctx.author.id)
@@ -731,7 +682,6 @@ async def handle_rec_open(cog: Any, ctx: Any) -> None:
         await save_json("user_settings.json", settings)
     await ctx.send("Class recommendations **Enabled**.")
 
-
 async def handle_rec_close(cog: Any, ctx: Any) -> None:
     uid = str(ctx.author.id)
     async with get_file_lock("user_settings.json"):
@@ -742,18 +692,12 @@ async def handle_rec_close(cog: Any, ctx: Any) -> None:
         await save_json("user_settings.json", settings)
     await ctx.send("Class recommendations **Disabled**.")
 
-
-# =============================================================================
-# SECTION 4: CHARACTER ROSTER MANAGEMENT & MODIFICATIONS
-# =============================================================================
-
 async def handle_edit(cog: Any, ctx: Any) -> None:
     embed = discord.Embed(title="Edit Character", color=discord.Color.blue())
     embed.description = "Modify an existing character's data."
     embed.add_field(name="Class", value="`!char edit class <Name> <NewClass>`")
     embed.add_field(name="Stats", value="`!char edit stat <Name> <Stat> <NewValue>`")
     await ctx.send(embed=embed)
-
 
 async def handle_edit_class(cog: Any, ctx: Any, *args: str) -> None:
     if not args:
@@ -777,7 +721,6 @@ async def handle_edit_class(cog: Any, ctx: Any, *args: str) -> None:
         new_class = ""
         user_chars = characters[uid]
 
-        # Direct exact match for 2 arguments (e.g. from slash command or clean parameters)
         if len(args) == 2:
             name_guess = args[0].strip('"\',')
             matched = next((c for c in user_chars if c["name"].lower() == name_guess.lower()), None)
@@ -786,7 +729,6 @@ async def handle_edit_class(cog: Any, ctx: Any, *args: str) -> None:
                 new_class = args[1].strip()
 
         if not matched_char:
-            # Greedy prefix match for multi-word names
             for c in sorted(user_chars, key=lambda x: len(x["name"]), reverse=True):
                 c_name = c["name"]
                 if full_input.lower().startswith(c_name.lower()):
@@ -820,7 +762,6 @@ async def handle_edit_class(cog: Any, ctx: Any, *args: str) -> None:
         embed.set_footer(text="Mineria RPG • Character Management")
 
     await ctx.send(embed=embed)
-
 
 async def handle_edit_stat(cog: Any, ctx: Any, *args: str) -> None:
     if not args:
@@ -878,7 +819,6 @@ async def handle_edit_stat(cog: Any, ctx: Any, *args: str) -> None:
         embed.set_footer(text="Mineria RPG • Character Management")
 
     await ctx.send(embed=embed)
-
 
 async def handle_info(cog: Any, ctx: Any, *, name: Optional[str] = None) -> None:
     characters = await load_json("characters.json")
@@ -973,7 +913,6 @@ async def handle_info(cog: Any, ctx: Any, *, name: Optional[str] = None) -> None
 
     await ctx.send(embed=embed)
 
-
 async def handle_list_chars(cog: Any, ctx: Any) -> None:
     characters = await load_json("characters.json")
     user_chars = characters.get(str(ctx.author.id), [])
@@ -1003,7 +942,6 @@ async def handle_list_chars(cog: Any, ctx: Any) -> None:
 
     await ctx.send(embed=embed)
 
-
 async def handle_rename(cog: Any, ctx: Any, *args: str) -> None:
     if not args:
         embed = discord.Embed(title="Rename Character", color=discord.Color.blue())
@@ -1025,7 +963,6 @@ async def handle_rename(cog: Any, ctx: Any, *args: str) -> None:
         old_char = None
         new_name = None
 
-        # Handle arrow syntax (e.g. "Old Name -> New Name")
         if "->" in full_input:
             parts = full_input.split("->", 1)
             old_guess = parts[0].strip().strip('"\'')
@@ -1069,7 +1006,6 @@ async def handle_rename(cog: Any, ctx: Any, *args: str) -> None:
 
     await ctx.send(embed=embed)
 
-
 async def handle_delete_char(cog: Any, ctx: Any, *, name: Optional[str] = None) -> None:
     if not name:
         embed = discord.Embed(title="Delete Character", color=discord.Color.red())
@@ -1109,11 +1045,6 @@ async def handle_delete_char(cog: Any, ctx: Any, *, name: Optional[str] = None) 
     )
     await ctx.send(embed=embed)
 
-
-# =============================================================================
-# SECTION 5: DISCORD COG & SLASH APPLICATION COMMAND REGISTRATION
-# =============================================================================
-
 class CharacterCog(commands.Cog, name="Character"):
 
     char_group = app_commands.Group(name="char", description="Character creation and management commands")
@@ -1127,10 +1058,6 @@ class CharacterCog(commands.Cog, name="Character"):
 
     def generate_stat_embed(self, ctx: Any, creation: Dict[str, Any], rolls_text: str, racial_mods: Dict[str, int]) -> discord.Embed:
         return generate_stat_embed(self.bot, ctx, creation, rolls_text, racial_mods)
-
-    # ─────────────────────────────────────────────
-    # Prefix Commands: !char
-    # ─────────────────────────────────────────────
 
     @commands.group(name="char", invoke_without_command=True)
     async def char(self, ctx: commands.Context) -> None:
@@ -1189,18 +1116,24 @@ class CharacterCog(commands.Cog, name="Character"):
         await handle_cancel_char(self, ctx)
 
     @char.command(name="kia")
-    async def kia(self, ctx: commands.Context, *, char_name: str) -> None:
+    async def kia(self, ctx: commands.Context, *, char_name: Optional[str] = None) -> None:
+        if not char_name or not char_name.strip():
+            await ctx.send("Usage: `!char kia <character_name>` (e.g. `!char kia Varka`)")
+            return
         cog = self.bot.get_cog("Utility")
         if cog:
-            await cog.fetch_and_calculate_xp(ctx, char_name, 0.5, "KIA XP", discord.Color.dark_red())
+            await cog.fetch_and_calculate_xp(ctx, char_name.strip(), 0.5, "KIA XP", discord.Color.dark_red())
         else:
             await ctx.send("Sheet utility is unavailable.")
 
     @char.command(name="mia")
-    async def mia(self, ctx: commands.Context, *, char_name: str) -> None:
+    async def mia(self, ctx: commands.Context, *, char_name: Optional[str] = None) -> None:
+        if not char_name or not char_name.strip():
+            await ctx.send("Usage: `!char mia <character_name>` (e.g. `!char mia Varka`)")
+            return
         cog = self.bot.get_cog("Utility")
         if cog:
-            await cog.fetch_and_calculate_xp(ctx, char_name, 0.9, "MIA XP", discord.Color.gold())
+            await cog.fetch_and_calculate_xp(ctx, char_name.strip(), 0.9, "MIA XP", discord.Color.gold())
         else:
             await ctx.send("Sheet utility is unavailable.")
 
@@ -1243,10 +1176,6 @@ class CharacterCog(commands.Cog, name="Character"):
     @char.command(name="delete")
     async def delete_char(self, ctx: commands.Context, *, name: Optional[str] = None) -> None:
         await handle_delete_char(self, ctx, name=name)
-
-    # ─────────────────────────────────────────────
-    # Slash Commands & Autocomplete: /char
-    # ─────────────────────────────────────────────
 
     async def _user_characters_autocomplete(
         self, interaction: discord.Interaction, current: str
@@ -1300,7 +1229,7 @@ class CharacterCog(commands.Cog, name="Character"):
 
     @char_group.command(name="create", description="Start creating a new character for a race")
     @app_commands.describe(race="The race of your character (e.g. Human, Elf, Dwarf)")
-    async def slash_create(self, interaction: discord.Interaction, race: str) -> None:
+    async def slash_create(self, interaction: discord.Interaction, race: Optional[str] = None) -> None:
         adapter = InteractionContextAdapter(interaction, self.bot)
         await handle_create(self, adapter, race_name=race)
 
@@ -1521,7 +1450,6 @@ class CharacterCog(commands.Cog, name="Character"):
             await handle_rec_close(self, adapter)
         else:
             await handle_rec(self, adapter)
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(CharacterCog(bot))

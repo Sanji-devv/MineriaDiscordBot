@@ -4,20 +4,11 @@ from discord import app_commands
 from discord.ext import commands
 from admin import is_user_authorized
 
-# =============================================================================
-# SECTION 1: MODERN CURATED COLOR PALETTE & CONSTANTS
-# =============================================================================
-# Rich theme colors tailored for Pathfinder / Mineria campaign visual identity
-COLOR_TERMINAL = discord.Color.from_rgb(67, 97, 238)    # #4361EE - Arcane Sapphire
-COLOR_CHARACTER = discord.Color.from_rgb(230, 126, 34)  # #E67E22 - Warm Dragon Amber
-COLOR_CORE = discord.Color.from_rgb(46, 204, 113)       # #2ECC71 - Emerald Sage
-COLOR_DOCS = discord.Color.from_rgb(26, 188, 156)       # #1ABC9C - Tactical Cyan Mint
-COLOR_ADMIN = discord.Color.from_rgb(231, 76, 60)       # #E74C3C - Crimson Bastion
-
-
-# =============================================================================
-# SECTION 2: HELP COG & EMBED BUILDERS
-# =============================================================================
+COLOR_TERMINAL = discord.Color.from_rgb(67, 97, 238)
+COLOR_CHARACTER = discord.Color.from_rgb(230, 126, 34)
+COLOR_CORE = discord.Color.from_rgb(46, 204, 113)
+COLOR_DOCS = discord.Color.from_rgb(26, 188, 156)
+COLOR_ADMIN = discord.Color.from_rgb(231, 76, 60)
 
 class HelpCog(commands.Cog, name="Help"):
 
@@ -186,8 +177,6 @@ class HelpCog(commands.Cog, name="Help"):
         embed.set_footer(text=f"Requested by: {user_name}", icon_url=avatar_url)
         return embed
 
-
-
     def _build_doc_help_embed(self, user: Union[discord.User, discord.Member]) -> discord.Embed:
         embed = discord.Embed(
             title="Campaign Documents & Tactical Maps Guide",
@@ -253,10 +242,6 @@ class HelpCog(commands.Cog, name="Help"):
         avatar_url = user.display_avatar.url if user.display_avatar else None
         embed.set_footer(text=f"Requested by: {user_name}", icon_url=avatar_url)
         return embed
-
-    # =========================================================================
-    # SECTION 3: COMMAND DISPATCHERS (!help, !m, /help)
-    # =========================================================================
 
     @commands.command(name="help", aliases=["m", "mineria", "h"])
     async def help_command(self, ctx: commands.Context, *, topic: Optional[str] = None) -> None:
@@ -330,7 +315,6 @@ class HelpCog(commands.Cog, name="Help"):
             embed = self._build_help_embed(interaction.user, is_admin=is_admin)
 
         await interaction.response.send_message(embed=embed)
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(HelpCog(bot))

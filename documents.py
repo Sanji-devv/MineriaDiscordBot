@@ -16,18 +16,12 @@ class Documents(commands.Cog, name="Documents"):
         self.docs_dir = base_dir / "mineria_files" / "docs"
         self.maps_dir = base_dir / "mineria_files" / "maps"
 
-        # Ensure target storage folders exist
         self.docs_dir.mkdir(parents=True, exist_ok=True)
         self.maps_dir.mkdir(parents=True, exist_ok=True)
 
-        # In-memory TTL caches to avoid repeated disk scans: (timestamp, cached_items)
         self._docs_cache: Tuple[float, List[Tuple[Path, float]]] = (0.0, [])
         self._maps_cache: Tuple[float, List[Path]] = (0.0, [])
-        self._cache_ttl = 60  # Cache directory listings for 60 seconds
-
-    # =========================================================================
-    # SECTION 1: DIRECTORY SCANNING & TTL CACHING
-    # =========================================================================
+        self._cache_ttl = 60
 
     async def _get_docs(self) -> List[Tuple[Path, float]]:
         now = time.time()
@@ -62,13 +56,8 @@ class Documents(commands.Cog, name="Documents"):
         self._maps_cache = (now, maps)
         return maps
 
-    # =========================================================================
-    # SECTION 2: DOCUMENT RETRIEVAL & LISTING (!doc, /doc)
-    # =========================================================================
-
     @commands.group(name="doc", invoke_without_command=True)
     async def doc_command(self, ctx: commands.Context, *, query: Optional[str] = None) -> None:
-        # Handle list shortcut (e.g. "!doc" or "!doc list")
         if not query or query.lower().strip() == "list":
             await self._list_docs(ctx)
             return
@@ -92,7 +81,6 @@ class Documents(commands.Cog, name="Documents"):
         )
         file_list = [f"**{f.name}** ({size:.2f} MB)" for f, size in doc_entries]
 
-        # Prevent hitting Discord embed field length limits (1024 characters)
         value_text = ""
         for idx, item in enumerate(file_list):
             if len(value_text) + len(item) + 50 > 1024:
@@ -125,12 +113,10 @@ class Documents(commands.Cog, name="Documents"):
             await ctx.send("Invalid filename format provided.")
             return
 
-        # Security check: Prevent path traversal attacks (e.g. "../../secret.txt")
         if not target_file.is_relative_to(base_dir):
             await ctx.send("Access Denied: Path traversal detected.")
             return
 
-        # If file doesn't exist by exact path, attempt fuzzy matching
         if not target_file.exists():
             direct_match = next(
                 (f for f in files if f.name.lower() == query.lower() or f.stem.lower() == query.lower()),
@@ -139,7 +125,6 @@ class Documents(commands.Cog, name="Documents"):
             if direct_match:
                 target_file = direct_match
             else:
-                # Fuzzy matching using difflib
                 file_names = [f.name for f in files]
                 matches = await asyncio.to_thread(difflib.get_close_matches, query, file_names, 1, 0.5)
                 if matches:
@@ -151,17 +136,12 @@ class Documents(commands.Cog, name="Documents"):
                     )
                     return
 
-        # Deliver file as Discord attachment
         try:
             await ctx.send(f"Downloading **{target_file.name}**...", file=discord.File(target_file))
         except discord.HTTPException:
             await ctx.send("File exceeds Discord upload limit for this server (Limit: 8 MB / 50 MB).")
         except Exception as exc:
             await ctx.send(f"Error uploading document: {exc}")
-
-    # =========================================================================
-    # SECTION 3: MAP RETRIEVAL & LISTING (!map, /map)
-    # =========================================================================
 
     @commands.group(name="map", invoke_without_command=True)
     async def map_group(self, ctx: commands.Context, *, name: Optional[str] = None) -> None:
@@ -187,7 +167,6 @@ class Documents(commands.Cog, name="Documents"):
         )
         map_list = [f"**{f.stem}**" for f in maps]
 
-        # Prevent hitting Discord embed field length limits
         value_text = ""
         for idx, item in enumerate(map_list):
             if len(value_text) + len(item) + 50 > 1024:
@@ -231,10 +210,6 @@ class Documents(commands.Cog, name="Documents"):
             await ctx.send("Map image exceeds Discord direct upload size limits.")
         except Exception as exc:
             await ctx.send(f"Error uploading map image: {exc}")
-
-    # =========================================================================
-    # SECTION 4: SLASH COMMANDS & AUTOCOMPLETE PROVIDERS
-    # =========================================================================
 
     @app_commands.command(name="doc", description="Download a campaign PDF or view available documents")
     @app_commands.describe(title="Name of the PDF document to view or download")
@@ -290,7 +265,6 @@ class Documents(commands.Cog, name="Documents"):
                     break
 
         return choices
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Documents(bot))

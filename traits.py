@@ -11,28 +11,18 @@ from discord.ext import commands
 from log_handler import logger
 from character import InteractionContextAdapter, load_json
 
-# ---------------------------------------------------------------------------
-# Pre-compiled Regular Expressions for Race Matching & Normalization
-# ---------------------------------------------------------------------------
-# Strip whitespace, underscores, and hyphens for canonical string comparison
 NORM_RE = re.compile(r"[\s_\-]+")
 
-# Extract text within parentheses (e.g. "Elf (High)" -> "High")
 PAREN_RE = re.compile(r"\((.*?)\)")
 
-# Split multiple race variants within descriptions (e.g. "Werebat or Werebat-kin")
 SPLIT_RE = re.compile(r"[,/|;]|\bor\b")
 
-# Normalize 'half-' prefix variations into compound words (e.g. 'half-elf' -> 'halfelf')
 HALF_RE = re.compile(r"half[\s_\-]+")
 
-# Match alphanumeric tokens for exact word matching
 WORDS_RE = re.compile(r"[a-zA-Z0-9]+")
 
-# Strip '-kin' suffix for creature ancestry matching (e.g. 'werebear-kin' -> 'werebear')
 KIN_RE = re.compile(r"-kin\b")
 
-# Category Aliases for user-friendly input mapping (e.g. 'planar' -> 'plane', 'planes' -> 'plane', 'crafting' -> 'craft')
 CATEGORY_ALIASES: Dict[str, str] = {
     "planar": "plane",
     "planes": "plane",
@@ -68,7 +58,6 @@ CATEGORY_ALIASES: Dict[str, str] = {
     "town": "urban",
 }
 
-
 async def _safe_delete(ctx: Any) -> None:
     msg = getattr(ctx, "message", None)
     if msg:
@@ -77,7 +66,6 @@ async def _safe_delete(ctx: Any) -> None:
         except (discord.Forbidden, discord.NotFound, discord.HTTPException, AttributeError):
             pass
 
-
 class Traits(commands.Cog, name="Traits"):
 
     def __init__(self, bot: commands.Bot):
@@ -85,9 +73,7 @@ class Traits(commands.Cog, name="Traits"):
         self.traits: List[Dict[str, Any]] = []
         self.traits_by_cat: Dict[str, List[Dict[str, Any]]] = {}
         self.race_traits: List[Dict[str, Any]] = []
-        # In-memory session cache for reroll commands: user_id -> roll_session_dict
         self.last_rolls: Dict[int, Dict[str, Any]] = {}
-        # Synchronous initial load as immediate fallback
         self._load_traits_sync()
 
     async def cog_load(self) -> None:
@@ -100,9 +86,9 @@ class Traits(commands.Cog, name="Traits"):
     def _load_traits_sync(self, force: bool = False) -> None:
         if self.traits and not force:
             return
-        file_path = Path(__file__).parent / "datas" / "traits.json"
+        file_path = Path(__file__).parent / "data" / "traits.json"
         if not file_path.exists():
-            file_path = Path(__file__).parent / "data" / "traits.json"
+            file_path = Path(__file__).parent / "datas" / "traits.json"
         if not file_path.exists():
             logger.warning("datas/traits.json or data/traits.json not found.")
             return
@@ -112,7 +98,6 @@ class Traits(commands.Cog, name="Traits"):
                 data = json.load(f)
                 self.traits = data.get("traits", [])
 
-                # Index traits by lowercase category for O(1) retrieval
                 by_cat: Dict[str, List[Dict[str, Any]]] = {}
                 race_list: List[Dict[str, Any]] = []
 
@@ -123,7 +108,6 @@ class Traits(commands.Cog, name="Traits"):
                             by_cat[category] = []
                         by_cat[category].append(trait)
 
-                        # Dual-index singular/plural aliases for instant O(1) retrieval
                         if category in ("plane", "planes"):
                             other = "planes" if category == "plane" else "plane"
                             if other not in by_cat:
@@ -140,7 +124,6 @@ class Traits(commands.Cog, name="Traits"):
                                 by_cat[other] = []
                             by_cat[other].append(trait)
 
-                    # Maintain a separate index for race-specific traits
                     if category == "race" or "/race-traits/" in trait.get("url", "") or any(f"({r})" in trait.get("name", "").lower() for r in ("human", "gnome", "halfling", "elf", "dwarf", "orc", "half-elf", "half-orc", "aasimar")):
                         race_list.append(trait)
 
@@ -150,17 +133,11 @@ class Traits(commands.Cog, name="Traits"):
         except Exception as exc:
             logger.error(f"Failed to parse traits.json: {exc}", exc_info=True)
 
-    # =========================================================================
-    # SECTION 1: RACE COMPATIBILITY & TRAIT SELECTION ALGORITHMS
-    # =========================================================================
-
     async def _is_admin(self, user: Any) -> bool:
         if not user:
             return False
-        # Server administrators have full access
         if getattr(user, "guild_permissions", None) and user.guild_permissions.administrator:
             return True
-        # Developer & allowed_users check from admin module
         try:
             from admin import is_user_authorized
             if await is_user_authorized(self.bot, user):
@@ -173,7 +150,6 @@ class Traits(commands.Cog, name="Traits"):
         raw_cat = cat_query.strip().lower()
         cat_key = CATEGORY_ALIASES.get(raw_cat, raw_cat)
 
-        # Handle race-specific filter: e.g. "race(elf)" or "race"
         if cat_key.startswith("race(") and cat_key.endswith(")"):
             race_name = cat_key[5:-1].strip()
             pool = [t for t in self.race_traits if self._is_race_match(t.get("name", ""), race_name)]
@@ -249,7 +225,6 @@ class Traits(commands.Cog, name="Traits"):
         if not q_norm:
             return False
 
-        # Extract parenthetical clauses, or test whole name if none exist
         parentheticals = PAREN_RE.findall(trait_name)
         if not parentheticals:
             parentheticals = [trait_name]
@@ -258,24 +233,20 @@ class Traits(commands.Cog, name="Traits"):
             p_lower = p.lower()
             p_norm = NORM_RE.sub("", p_lower)
 
-            # 1. Exact match against normalized parenthetical
             if q_norm == p_norm:
                 return True
 
-            # 2. Split multi-race segments by comma, slash, or 'or'
             segments = SPLIT_RE.split(p_lower)
             for seg in segments:
                 seg_norm = NORM_RE.sub("", seg.strip())
                 if q_norm == seg_norm:
                     return True
 
-                # Prevent 'elf' from matching 'half-elf' by treating 'half-xxx' as compound 'halfxxx'
                 seg_compound = HALF_RE.sub("half", seg)
                 seg_words = WORDS_RE.findall(seg_compound)
                 if q_norm in seg_words:
                     return True
 
-                # Handle -kin suffixes (e.g., 'werebear' matches 'werebear-kin')
                 seg_no_kin = KIN_RE.sub("", seg.strip())
                 if q_norm == NORM_RE.sub("", seg_no_kin):
                     return True
@@ -289,7 +260,6 @@ class Traits(commands.Cog, name="Traits"):
             cat_key = CATEGORY_ALIASES.get(val.lower(), val.lower())
             category_traits = self.traits_by_cat.get(cat_key, [])
             if race:
-                # Filter category traits by race requirement if specified
                 pool = [
                     t for t in category_traits
                     if (t.get("req_race", "Any").lower() == "any" or self._is_race_match(t.get("req_race", ""), race))
@@ -304,14 +274,12 @@ class Traits(commands.Cog, name="Traits"):
         elif t_type == "race":
             race_specific_pool = []
             if val:
-                # Find traits specifically targeting the requested race
                 race_specific_pool = [
                     tr for tr in self.race_traits
                     if self._is_race_match(tr.get("name", ""), val)
                     and tr.get("name") not in exclude_names
                 ]
 
-            # Fallback to general race trait pool if no specific race match
             race_fallback_pool = [
                 tr for tr in self.race_traits
                 if tr.get("name") not in exclude_names
@@ -406,7 +374,6 @@ class Traits(commands.Cog, name="Traits"):
             count_str = f" `({count})`" if count > 0 else ""
             cat_lines.append(f"• **{name}**{count_str} — *{desc}*")
 
-        # Dynamically include any other categories found in traits.json
         ignored_keys = {"none", "disabled", "inactive"} | set(CATEGORY_ALIASES.keys())
         for key in sorted(list(self.traits_by_cat.keys())):
             canonical = CATEGORY_ALIASES.get(key, key)
@@ -417,7 +384,6 @@ class Traits(commands.Cog, name="Traits"):
                 known_keys.add(key)
                 known_keys.add(canonical)
 
-        # Split categories cleanly into two balanced fields
         mid = (len(cat_lines) + 1) // 2
         part1 = cat_lines[:mid]
         part2 = cat_lines[mid:]
@@ -464,9 +430,6 @@ class Traits(commands.Cog, name="Traits"):
 
         return embed
 
-    # =========================================================================
-    # SECTION 2: COMMAND PARSING & EXECUTION (!trait, !trait reroll)
-    # =========================================================================
     @commands.group(name="trait", aliases=["traits", "t"], invoke_without_command=True)
     async def trait(self, ctx: commands.Context, *args: str) -> None:
         await self._execute_trait_roll(ctx, *args)
@@ -476,21 +439,18 @@ class Traits(commands.Cog, name="Traits"):
             await ctx.send("Trait database is empty or could not be loaded.")
             return
 
-        # 1. Clean and normalize input tokens (split commas and spaces)
         cleaned_tokens: List[str] = []
         for a in args:
             for part in a.replace(",", " ").split():
                 if part:
                     cleaned_tokens.append(part)
 
-        # Show trait help embed if no arguments or explicit help query
         if not cleaned_tokens or (len(cleaned_tokens) == 1 and cleaned_tokens[0].lower() in ("help", "h", "list", "categories")):
             user = getattr(ctx, "author", getattr(ctx, "user", None))
             embed = self.build_trait_help_embed(user)
             await ctx.send(embed=embed)
             return
 
-        # Check for admin '!trait <category> all' or '!trait all <category>' command
         tokens_lower = [t.lower() for t in cleaned_tokens]
         if "all" in tokens_lower:
             user = getattr(ctx, "author", getattr(ctx, "user", None))
@@ -506,7 +466,6 @@ class Traits(commands.Cog, name="Traits"):
             await self._send_all_category_traits(ctx, cat_tokens[0])
             return
 
-        # 2. Merge parenthetical race tokens that may contain spaces: e.g. "race(half", "elf)" -> "race(half elf)"
         merged_args: List[str] = []
         in_race_bracket = False
         temp_race_tokens: List[str] = []
@@ -517,14 +476,11 @@ class Traits(commands.Cog, name="Traits"):
             tok_lower = tok.lower()
 
             if not in_race_bracket:
-                # Handle single-token race: "race(human)"
                 if tok_lower.startswith("race(") and tok_lower.endswith(")"):
                     merged_args.append(tok)
-                # Handle start of multi-token race: "race(half"
                 elif tok_lower.startswith("race("):
                     in_race_bracket = True
                     temp_race_tokens.append(tok)
-                # Handle separated race syntax: "race" "(half elf)"
                 elif tok_lower == "race" and i + 1 < len(cleaned_tokens) and cleaned_tokens[i + 1].startswith("("):
                     in_race_bracket = True
                     temp_race_tokens.append("race" + cleaned_tokens[i + 1])
@@ -546,7 +502,6 @@ class Traits(commands.Cog, name="Traits"):
         if temp_race_tokens:
             merged_args.append(" ".join(temp_race_tokens))
 
-        # 3. Pre-scan for race parameter (e.g. "race(human)" -> race="human")
         race: Optional[str] = None
         for arg in merged_args:
             arg_lower = arg.lower().strip()
@@ -554,18 +509,15 @@ class Traits(commands.Cog, name="Traits"):
                 race = arg_lower[5:-1].strip()
                 break
 
-        # 4. Parse arguments into selection sequence
         selection_order: List[Tuple[str, Optional[str]]] = []
         i = 0
         while i < len(merged_args):
             arg = merged_args[i]
             arg_lower = arg.lower().strip()
 
-            # Handle race category shortcut
             if arg_lower.startswith("race(") and arg_lower.endswith(")"):
                 r_name = arg_lower[5:-1].strip()
                 selection_order.append(("race", r_name))
-            # Handle 'random' keyword with count: e.g. "random 3" -> 3 distinct random categories
             elif arg_lower == "random":
                 count = 1
                 if i + 1 < len(merged_args) and merged_args[i + 1].isdigit():
@@ -580,7 +532,6 @@ class Traits(commands.Cog, name="Traits"):
                 selection_order.append(("category", cat_target))
             i += 1
 
-        # Catalog all available categories for user hints
         all_cats = sorted(list(set([
             t.get("category", "").strip()
             for t in self.traits
@@ -589,7 +540,6 @@ class Traits(commands.Cog, name="Traits"):
         display_cats = [cat if cat != "Race" else "Race(human)" for cat in all_cats]
         cat_list = ", ".join(display_cats)
 
-        # Validate minimum requirement of 3 distinct categories
         if not args:
             hint_message = (
                 f"Invalid Command Usage: You must specify at least 3 distinct categories.\n"
@@ -629,7 +579,6 @@ class Traits(commands.Cog, name="Traits"):
             await ctx.send(hint_message)
             return
 
-        # 5. Resolve 'random' placeholders to concrete categories
         resolved_order: List[Tuple[str, Optional[str]]] = []
         used_categories: List[str] = []
         errors: List[str] = []
@@ -649,7 +598,6 @@ class Traits(commands.Cog, name="Traits"):
                 else:
                     errors.append("random")
 
-        # 6. Draw traits ensuring non-duplicate trait names
         results: List[Optional[Dict[str, Any]]] = []
         for t, val in resolved_order:
             exclude_names = {tr.get("name") for tr in results if tr and tr.get("name")}
@@ -671,7 +619,6 @@ class Traits(commands.Cog, name="Traits"):
             )
             return
 
-        # 7. Render embed and store session in cache for reroll commands
         embed = self._build_trait_embed(results, race, errors)
         sent_message = await ctx.send(embed=embed)
 
@@ -710,7 +657,6 @@ class Traits(commands.Cog, name="Traits"):
         user_id = ctx.author.id
         now = time.time()
 
-        # Clean expired sessions (older than 24 hours)
         expired_keys = [k for k, v in self.last_rolls.items() if now - v.get("time", 0) > 86400]
         for k in expired_keys:
             del self.last_rolls[k]
@@ -731,7 +677,6 @@ class Traits(commands.Cog, name="Traits"):
         results = roll_data["results"].copy()
         errors = roll_data["errors"].copy()
 
-        # Clean input arguments
         cleaned_args: List[str] = []
         for a in args:
             for part in a.replace(",", " ").split():
@@ -747,7 +692,6 @@ class Traits(commands.Cog, name="Traits"):
             )
             return
 
-        # Handle 'all' reroll shortcut
         indices_to_reroll: List[int] = []
         invalid_targets: List[str] = []
 
@@ -756,7 +700,6 @@ class Traits(commands.Cog, name="Traits"):
         else:
             for arg in cleaned_args:
                 arg_lower = arg.lower().strip()
-                # Handle numeric 1-based index (e.g. "1" -> index 0)
                 if arg_lower.isdigit():
                     idx = int(arg_lower) - 1
                     if 0 <= idx < len(resolved_order):
@@ -765,7 +708,6 @@ class Traits(commands.Cog, name="Traits"):
                     else:
                         invalid_targets.append(arg)
                 else:
-                    # Handle category name targeting (e.g. "combat")
                     found = False
                     norm_arg = CATEGORY_ALIASES.get(arg_lower, arg_lower)
                     for idx, (t_type, val) in enumerate(resolved_order):
@@ -789,18 +731,15 @@ class Traits(commands.Cog, name="Traits"):
             )
             return
 
-        # Perform reroll excluding other selected traits and current trait
         rerolled_any = False
         for idx in indices_to_reroll:
             t_type, val = resolved_order[idx]
             other_names = {results[i].get("name") for i in range(len(results)) if i != idx and results[i] and results[i].get("name")}
             current_name = results[idx].get("name") if results[idx] else None
 
-            # First attempt: Exclude both other traits AND current trait to guarantee a distinct result
             exclude_names = other_names | ({current_name} if current_name else set())
             new_trait = self._select_trait(t_type, val, race, exclude_names)
 
-            # Fallback: If no other trait exists in pool, permit re-drawing
             if not new_trait:
                 new_trait = self._select_trait(t_type, val, race, other_names)
 
@@ -816,7 +755,6 @@ class Traits(commands.Cog, name="Traits"):
             )
             return
 
-        # Update original message embed in-place
         embed = self._build_trait_embed(results, race, errors)
         original_footer = embed.footer.text if embed.footer else "Mineria RPG • Traits"
 
@@ -841,15 +779,10 @@ class Traits(commands.Cog, name="Traits"):
             await ctx.send("Original trait message could not be edited. Please roll again with `!trait`.", delete_after=10)
             return
 
-        # Update cached roll session
         self.last_rolls[user_id]["results"] = results
         self.last_rolls[user_id]["time"] = time.time()
 
         await _safe_delete(ctx)
-
-    # =========================================================================
-    # SECTION 3: SLASH APPLICATION COMMANDS & AUTOCOMPLETE
-    # =========================================================================
 
     async def _trait_categories_autocomplete(
         self, interaction: discord.Interaction, current: str
@@ -963,7 +896,6 @@ class Traits(commands.Cog, name="Traits"):
     async def slash_traits(self, interaction: discord.Interaction) -> None:
         embed = self.build_trait_help_embed(interaction.user)
         await interaction.response.send_message(embed=embed)
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Traits(bot))

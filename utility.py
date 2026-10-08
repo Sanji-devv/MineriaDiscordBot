@@ -1,38 +1,31 @@
 import os
 import io
-import gc
 import re
 import csv
 import time
 import difflib
 import asyncio
+import aiohttp
+import discord
 from pathlib import Path
 from typing import Tuple, List, Dict, Any, Optional
-import discord
 from discord import app_commands
 from discord.ext import commands
-import aiohttp
 from dotenv import load_dotenv
 from log_handler import logger
-from admin import DEVELOPER_ID, is_user_authorized
+from admin import ADMIN_IDS, is_user_authorized
 from character import InteractionContextAdapter, load_json
-
-# =============================================================================
-# SECTION 1: CONSTANTS, NUMBER FORMATTING & XP PROGRESSION TABLES
-# =============================================================================
 
 load_dotenv(Path(__file__).parent / ".env")
 XP_SHEET_URL = os.getenv("XP_SHEET_URL")
 REPORTS_SHEET_URL = os.getenv("REPORTS_SHEET_URL")
 
-# Automatically derive Mission Reports URL (gid=0) from XP_SHEET_URL if omitted
 if not REPORTS_SHEET_URL and XP_SHEET_URL:
     if "gid=" in XP_SHEET_URL:
         REPORTS_SHEET_URL = re.sub(r"gid=\d+", "gid=0", XP_SHEET_URL)
     else:
-        REPORTS_SHEET_URL = f"{XP_SHEET_URL}&gid=0" if "?" in XP_SHEET_URL else f"{XP_SHEET_URL}?export?format=csv&gid=0"
+        REPORTS_SHEET_URL = f"{XP_SHEET_URL}&gid=0" if "?" in XP_SHEET_URL else f"{XP_SHEET_URL}?export&format=csv&gid=0"
 
-# Keywords designating inactive, retired, or deceased characters
 INACTIVE_KEYWORDS = (
     "inactive", "inaktif", "in-aktif",
     "dead", "ölü", "olu",
@@ -40,10 +33,8 @@ INACTIVE_KEYWORDS = (
     "pasif", "ex", "emekli"
 )
 
-# Server-approved ranked positions permitted to be paired with a Clerk character
 QUALIFIED_RANKS = ("kıdemli", "kidemli", "uzman", "gezgin", "senior", "expert", "wanderer")
 
-# Campaign XP progression milestones from Level 1 to 20
 XP_TABLE: Dict[int, int] = {
     1: 0,
     2: 1300,
@@ -68,7 +59,6 @@ XP_TABLE: Dict[int, int] = {
 }
 XP_LEVELS: List[Tuple[int, int]] = sorted(XP_TABLE.items(), key=lambda x: x[0])
 
-# Turkish character mapping table for case-folding and phonetic normalization
 TR_MAP = str.maketrans({
     "İ": "i", "I": "i", "ı": "i",
     "Ş": "s", "ş": "s",
@@ -78,12 +68,10 @@ TR_MAP = str.maketrans({
     "Ç": "c", "ç": "c"
 })
 
-
 def normalize_name(s: str) -> str:
     if not s:
         return ""
     return " ".join(s.translate(TR_MAP).lower().split())
-
 
 def parse_xp_value(val: Any) -> float:
     if val is None:
@@ -95,10 +83,8 @@ def parse_xp_value(val: Any) -> float:
     if not val_str:
         return 0.0
 
-    # Strip formatting artefacts, quotes, and non-breaking spaces
     val_str = val_str.replace('"', "").replace("'", "").replace(" ", "").replace("\u00a0", "")
 
-    # Handle mixed punctuation (e.g. 1.250,50 vs 1,250.50)
     if "," in val_str and "." in val_str:
         if val_str.rfind(",") > val_str.rfind("."):
             val_str = val_str.replace(".", "").replace(",", ".")
@@ -120,7 +106,6 @@ def parse_xp_value(val: Any) -> float:
     except ValueError:
         return 0.0
 
-
 def get_level_info(current_xp: float) -> Tuple[int, float, int]:
     current_xp = max(0.0, current_xp)
     current_level = 1
@@ -138,7 +123,6 @@ def get_level_info(current_xp: float) -> Tuple[int, float, int]:
     xp_needed = XP_TABLE[next_level] - current_xp
     return current_level, xp_needed, next_level
 
-
 def format_number(val: Any) -> str:
     if val is None:
         return "0"
@@ -152,11 +136,6 @@ def format_number(val: Any) -> str:
     except Exception:
         return val_str
 
-
-# =============================================================================
-# SECTION 2: 4-STAGE FUZZY CHARACTER MATCHING ENGINE
-# =============================================================================
-
 def find_sheet_character(
     query: str,
     data: List[Dict[str, Any]],
@@ -166,7 +145,6 @@ def find_sheet_character(
     if not clean_target or not data:
         return None, []
 
-    # Stage 1: O(1) fast exact match via index map or direct scan
     if exact_map and clean_target in exact_map:
         return exact_map[clean_target], []
 
@@ -174,14 +152,12 @@ def find_sheet_character(
         if char.get("norm_name") == clean_target:
             return char, []
 
-    # Stage 2: Substring match
     partial_matches = [char for char in data if clean_target in char.get("norm_name", "")]
     if len(partial_matches) == 1:
         return partial_matches[0], []
     elif len(partial_matches) > 1:
         return None, partial_matches
 
-    # Stage 3: Token-set match (handles flipped names e.g. 'Quickfire Thoma')
     q_tokens = set(clean_target.split())
     if q_tokens:
         token_matches = [char for char in data if set(char.get("norm_name", "").split()) == q_tokens]
@@ -190,7 +166,6 @@ def find_sheet_character(
         elif len(token_matches) > 1:
             return None, token_matches
 
-    # Stage 4: Fuzzy sequence matching for typos
     scored: List[Tuple[float, Dict[str, Any]]] = []
     q_words = clean_target.split()
 
@@ -215,24 +190,18 @@ def find_sheet_character(
     if scored:
         scored.sort(key=lambda x: x[0], reverse=True)
         best_score, best_char = scored[0]
-        # Resolve if single high match, clear leader (>8% gap), or >=80% similarity
+
         if len(scored) == 1 or best_score >= 0.80 or (best_score - scored[1][0] >= 0.08):
             return best_char, []
         else:
             return None, [c for _, c in scored[:5]]
 
-    # Stage 5: Suggestion fallback
     norm_to_char = {c.get("norm_name", ""): c for c in data if c.get("norm_name")}
     close_names = difflib.get_close_matches(clean_target, list(norm_to_char.keys()), n=3, cutoff=0.50)
     if close_names:
         return None, [norm_to_char[n] for n in close_names]
 
     return None, []
-
-
-# =============================================================================
-# SECTION 3: ONE TIME COMMANDS COG & GOOGLE SHEET INGESTION
-# =============================================================================
 
 class OneTimeCommands(commands.Cog, name="Utility"):
 
@@ -262,21 +231,28 @@ class OneTimeCommands(commands.Cog, name="Utility"):
         return self._session
 
     async def cog_load(self) -> None:
-        # Pre-fetch XP and report sheets in background so caches and autocompletes are primed immediately
-        asyncio.create_task(self.fetch_xp_data(force_refresh=True))
+        self._initial_fetch_task = asyncio.create_task(self.fetch_xp_data(force_refresh=True))
 
     async def cog_unload(self) -> None:
+        if hasattr(self, "_initial_fetch_task") and self._initial_fetch_task and not self._initial_fetch_task.done():
+            self._initial_fetch_task.cancel()
+            try:
+                await self._initial_fetch_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
         if self._session and not self._session.closed:
             await self._session.close()
+            await asyncio.sleep(0.25)
 
     async def fetch_xp_data(self, force_refresh: bool = False) -> Tuple[List[Dict[str, Any]], int]:
         now = time.time()
-        # Fast path: Serve from in-memory cache if within TTL and not explicitly forced
+
         if not force_refresh and self._cache_data and (now - self._cache_timestamp < self._cache_ttl):
             return self._cache_data, self._cache_skipped
 
         async with self._fetch_lock:
-            # Re-check timestamp after acquiring lock to deduplicate concurrent requests
+
             now = time.time()
             if not force_refresh and self._cache_data and (now - self._cache_timestamp < self._cache_ttl):
                 return self._cache_data, self._cache_skipped
@@ -332,7 +308,7 @@ class OneTimeCommands(commands.Cog, name="Utility"):
             kia_exact_map: Dict[str, Dict[str, Any]] = {}
 
             for r_idx, row in enumerate(xp_rows[1:], start=2):
-                # Left Table: Columns B to N (Active Roster)
+
                 if len(row) > 2:
                     char_name = row[1].strip() if len(row) > 1 else ""
                     player_name = row[2].strip() if len(row) > 2 else ""
@@ -372,13 +348,12 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                         })
                         char_map.setdefault(norm_c, []).append(active_entry)
 
-                        # Compute KIA/MIA Base and Task XP
                         k_full_xp = 0.0
-                        for idx in [10, 11, 12]:  # Fixed XP: K, L, M
+                        for idx in [10, 11, 12]:
                             if idx < len(row):
                                 k_full_xp += parse_xp_value(row[idx])
                         k_task_xp = 0.0
-                        for idx in [8, 9]:  # Task XP: I, J
+                        for idx in [8, 9]:
                             if idx < len(row):
                                 k_task_xp += parse_xp_value(row[idx])
 
@@ -394,7 +369,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                     elif len(row) >= 5 and (not char_name or not player_name):
                         skipped_count += 1
 
-                # Right Table: Columns P to V (Archived / Graveyard / Retired Roster)
                 if len(row) > 16:
                     char_name = row[15].strip() if len(row) > 15 else ""
                     player_name = row[16].strip() if len(row) > 16 else ""
@@ -422,7 +396,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                         player_graveyard_map.setdefault(norm_p, []).append(graveyard_entry)
                         char_map.setdefault(norm_c, []).append(graveyard_entry)
 
-            # Parse Mission Reports Column AM (GM Column, idx 38)
             gm_counts = {}
             if report_content:
                 report_reader = csv.reader(io.StringIO(report_content))
@@ -450,13 +423,9 @@ class OneTimeCommands(commands.Cog, name="Utility"):
 
             return self._cache_data, self._cache_skipped
 
-    # =========================================================================
-    # SECTION 4: GM PLAYER TRACKER (!gm, /gm)
-    # =========================================================================
-
     @commands.command(name="gm", aliases=["player", "gmcheck", "pinfo"])
     async def gm_player_command(self, ctx: commands.Context, *, player_query: Optional[str] = None) -> None:
-        if ctx.author.id != DEVELOPER_ID and not await is_user_authorized(self.bot, ctx.author):
+        if ctx.author.id not in ADMIN_IDS and not await is_user_authorized(self.bot, ctx.author):
             await ctx.send("This command is restricted to administrators.")
             return
 
@@ -499,15 +468,12 @@ class OneTimeCommands(commands.Cog, name="Utility"):
             await ctx.send("Failed to fetch XP table data or sheet is empty.")
             return
 
-        # Player matching algorithm
         target_player = None
         match_note = None
 
-        # 1. Exact match on player name
         if query_norm in self._cache_players:
             target_player = self._cache_players[query_norm]
 
-        # 2. Check if query matches character name
         if not target_player and query_norm in self._cache_char_map:
             owners = list({e["player_name"] for e in self._cache_char_map[query_norm]})
             if len(owners) == 1:
@@ -515,7 +481,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                 matched_char_name = self._cache_char_map[query_norm][0]["char_name"]
                 match_note = f"Character Match: **{matched_char_name}** -> **{target_player}**"
 
-        # 3. Partial match on player names
         if not target_player:
             candidates = [p for norm_p, p in self._cache_players.items() if query_norm in norm_p or norm_p in query_norm]
             if len(candidates) == 1:
@@ -538,7 +503,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                 await ctx.send(embed=embed)
                 return
 
-        # 4. Fuzzy match for character name typos
         if not target_player:
             char_candidates = [norm_c for norm_c in self._cache_char_map if query_norm in norm_c]
             if len(char_candidates) == 1:
@@ -567,7 +531,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                             target_player = owners[0]
                             match_note = f"Character Match: **{matched_entries[0]['char_name']}** -> **{target_player}**"
 
-        # 5. Not found fallback with suggestions
         if not target_player:
             close_matches = difflib.get_close_matches(query_norm, self._cache_player_keys, n=4, cutoff=0.5)
             embed = discord.Embed(
@@ -583,7 +546,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
             await ctx.send(embed=embed)
             return
 
-        # Build player overview
         target_norm = normalize_name(target_player)
         active_list = self._cache_player_active.get(target_norm, [])
         graveyard_list = self._cache_player_graveyard.get(target_norm, [])
@@ -669,10 +631,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
 
         await ctx.send(embed=embed)
 
-    # =========================================================================
-    # SECTION 5: FALLEN (KIA) & MISSING (MIA) XP SYSTEM (!kia, !mia)
-    # =========================================================================
-
     async def fetch_and_calculate_xp(
         self, ctx: Any, char_name: str, multiplier: float, title: str, color: discord.Color
     ) -> None:
@@ -703,7 +661,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                 task_xp = matched_char["task_xp"]
                 display_name = matched_char["raw_name"]
 
-                # Calculate final XP and level milestones
                 added_xp = task_xp * multiplier
                 final_xp = full_xp + added_xp
                 level, xp_needed, next_level = get_level_info(final_xp)
@@ -754,16 +711,18 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                 await ctx.send(f"Error: {err_text}")
 
     @commands.command(name="kia")
-    async def kia_command(self, ctx: commands.Context, *, char_name: str) -> None:
-        await self.fetch_and_calculate_xp(ctx, char_name, 0.5, "KIA XP", discord.Color.dark_red())
+    async def kia_command(self, ctx: commands.Context, *, char_name: Optional[str] = None) -> None:
+        if not char_name or not char_name.strip():
+            await ctx.send("Usage: `!kia <character_name>` (e.g. `!kia Varka`)")
+            return
+        await self.fetch_and_calculate_xp(ctx, char_name.strip(), 0.5, "KIA XP", discord.Color.dark_red())
 
     @commands.command(name="mia")
-    async def mia_command(self, ctx: commands.Context, *, char_name: str) -> None:
-        await self.fetch_and_calculate_xp(ctx, char_name, 0.9, "MIA XP", discord.Color.gold())
-
-    # =========================================================================
-    # SECTION 8: SLASH APPLICATION COMMANDS & AUTOCOMPLETE
-    # =========================================================================
+    async def mia_command(self, ctx: commands.Context, *, char_name: Optional[str] = None) -> None:
+        if not char_name or not char_name.strip():
+            await ctx.send("Usage: `!mia <character_name>` (e.g. `!mia Varka`)")
+            return
+        await self.fetch_and_calculate_xp(ctx, char_name.strip(), 0.9, "MIA XP", discord.Color.gold())
 
     async def _kia_character_autocomplete(
         self, interaction: discord.Interaction, current: str
@@ -772,7 +731,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
         curr_lower = current.lower().strip()
         seen_names = set()
 
-        # 1. User's saved characters
         try:
             characters = await load_json("characters.json")
             uid = str(interaction.user.id)
@@ -790,7 +748,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
         except Exception:
             pass
 
-        # 2. Characters from Google Sheet cache
         if self._cache_kia_data:
             for char in self._cache_kia_data:
                 raw_name = char.get("raw_name", "")
@@ -804,7 +761,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                         if len(choices) >= 25:
                             return choices
 
-            # 3. Fuzzy matches for typos
             if curr_lower and len(choices) < 25:
                 fuzzy_scored = []
                 for char in self._cache_kia_data:
@@ -859,7 +815,7 @@ class OneTimeCommands(commands.Cog, name="Utility"):
     @app_commands.command(name="gm", description="[Admin] Query player GM sessions and character history")
     @app_commands.describe(player_name="Name of the player to query")
     async def slash_gm(self, interaction: discord.Interaction, player_name: Optional[str] = None) -> None:
-        if interaction.user.id != DEVELOPER_ID and not await is_user_authorized(self.bot, interaction.user):
+        if interaction.user.id not in ADMIN_IDS and not await is_user_authorized(self.bot, interaction.user):
             await interaction.response.send_message("This command is restricted to administrators.", ephemeral=True)
             return
 
@@ -892,10 +848,8 @@ class OneTimeCommands(commands.Cog, name="Utility"):
     ) -> List[app_commands.Choice[str]]:
         return await self._gm_player_autocomplete(interaction, current)
 
-
 KiaCog = OneTimeCommands
 Utility = OneTimeCommands
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(OneTimeCommands(bot))

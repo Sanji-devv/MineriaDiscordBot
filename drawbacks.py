@@ -9,6 +9,8 @@ from log_handler import logger
 
 class Drawbacks(commands.Cog, name="Drawbacks"):
 
+    EXCLUDED_DRAWBACKS: set = {"Family Ties"}
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.drawbacks: List[Dict[str, Any]] = []
@@ -16,9 +18,9 @@ class Drawbacks(commands.Cog, name="Drawbacks"):
 
     def _load_drawbacks(self) -> None:
         try:
-            file_path = Path(__file__).parent / "datas" / "drawbacks.json"
+            file_path = Path(__file__).parent / "data" / "drawbacks.json"
             if not file_path.exists():
-                file_path = Path(__file__).parent / "data" / "drawbacks.json"
+                file_path = Path(__file__).parent / "datas" / "drawbacks.json"
             if file_path.exists():
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -33,12 +35,13 @@ class Drawbacks(commands.Cog, name="Drawbacks"):
         if not self.drawbacks:
             return None
 
-        # Select a random drawback entry from the cached list
-        selected = random.choice(self.drawbacks)
+        pool = [d for d in self.drawbacks if d.get("name") not in self.EXCLUDED_DRAWBACKS]
+        if not pool:
+            return None
+        selected = random.choice(pool)
         name = selected.get("name", "Unknown Drawback")
         url = selected.get("url")
 
-        # Format markdown hyperlink if wiki URL exists
         desc_text = f"**[{name}]({url})**" if url else f"**{name}**"
 
         embed = discord.Embed(
@@ -72,7 +75,6 @@ class Drawbacks(commands.Cog, name="Drawbacks"):
             return
 
         await interaction.response.send_message(embed=embed)
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Drawbacks(bot))
