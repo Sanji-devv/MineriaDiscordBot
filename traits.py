@@ -24,38 +24,144 @@ WORDS_RE = re.compile(r"[a-zA-Z0-9]+")
 KIN_RE = re.compile(r"-kin\b")
 
 CATEGORY_ALIASES: Dict[str, str] = {
+    # Plane
     "planar": "plane",
     "planes": "plane",
     "plane": "plane",
     "dimension": "plane",
     "dimensions": "plane",
+    # Craft
+    "craft": "craft",
+    "crafts": "craft",
     "crafting": "craft",
     "crafter": "craft",
+    "crafters": "craft",
+    # Nature
+    "nature": "nature",
     "wild": "nature",
     "wilderness": "nature",
+    "druid": "nature",
+    "druids": "nature",
+    "natural": "nature",
+    "outdoors": "nature",
+    # Underworld
     "underworld": "underworld",
     "crime": "underworld",
     "criminal": "underworld",
+    "criminals": "underworld",
     "thief": "underworld",
     "thieves": "underworld",
     "blackmarket": "underworld",
+    "rogue": "underworld",
+    "rogues": "underworld",
+    # Scholar
     "scholar": "scholar",
+    "scholars": "scholar",
     "academic": "scholar",
+    "academics": "scholar",
     "academy": "scholar",
     "knowledge": "scholar",
     "lore": "scholar",
+    # Occult
     "occult": "occult",
     "occults": "occult",
     "eldritch": "occult",
+    # Tactic
     "tactics": "tactic",
     "tactic": "tactic",
     "tactical": "tactic",
     "strategy": "tactic",
+    "strategies": "tactic",
+    # Urban
     "urban": "urban",
     "city": "urban",
     "cities": "urban",
     "metropolis": "urban",
     "town": "urban",
+    "towns": "urban",
+    # Mount
+    "mount": "mount",
+    "mounts": "mount",
+    "steed": "mount",
+    "steeds": "mount",
+    "horse": "mount",
+    "horses": "mount",
+    "riding": "mount",
+    # Hunter
+    "hunter": "hunter",
+    "hunters": "hunter",
+    "hunt": "hunter",
+    "hunts": "hunter",
+    "hunting": "hunter",
+    "ranger": "hunter",
+    "rangers": "hunter",
+    # Animal
+    "animal": "animal",
+    "animals": "animal",
+    "beast": "animal",
+    "beasts": "animal",
+    "familiar": "animal",
+    "familiars": "animal",
+    "animal companion": "animal",
+    "animal companions": "animal",
+    "companion": "animal",
+    "companions": "animal",
+    "eidolon": "animal",
+    "eidolons": "animal",
+    "pet": "animal",
+    "pets": "animal",
+    # Nobility
+    "nobility": "nobility",
+    "noble": "nobility",
+    "nobles": "nobility",
+    "aristocrat": "nobility",
+    "aristocrats": "nobility",
+    "aristocracy": "nobility",
+    "royal": "nobility",
+    "royalty": "nobility",
+    "court": "nobility",
+    # Regional
+    "regional": "regional",
+    "region": "regional",
+    "regions": "regional",
+    "homeland": "regional",
+    # Religion & Faith
+    "religion": "religion",
+    "religions": "religion",
+    "religious": "religion",
+    "deity": "religion",
+    "deities": "religion",
+    "faith": "faith",
+    "faiths": "faith",
+    "divine": "faith",
+    # Magic
+    "magic": "magic",
+    "magical": "magic",
+    "arcane": "magic",
+    "spell": "magic",
+    "spells": "magic",
+    # Combat
+    "combat": "combat",
+    "combats": "combat",
+    "martial": "combat",
+    "war": "combat",
+    "warrior": "combat",
+    "warriors": "combat",
+    # Equipment
+    "equipment": "equipment",
+    "equip": "equipment",
+    "gear": "equipment",
+    "item": "equipment",
+    "items": "equipment",
+    # Family
+    "family": "family",
+    "families": "family",
+    # Campaign
+    "campaign": "campaign",
+    "campaigns": "campaign",
+    # Social
+    "social": "social",
+    "diplomacy": "social",
 }
 
 async def _safe_delete(ctx: Any) -> None:
@@ -74,6 +180,9 @@ class Traits(commands.Cog, name="Traits"):
         self.traits_by_cat: Dict[str, List[Dict[str, Any]]] = {}
         self.race_traits: List[Dict[str, Any]] = []
         self.last_rolls: Dict[int, Dict[str, Any]] = {}
+        # Trait names from each user's most recent completed roll are excluded
+        # from their next roll, then replaced by that roll's results.
+        self.blocked_traits: Dict[int, Set[str]] = {}
         self._load_traits_sync()
 
     async def cog_load(self) -> None:
@@ -123,6 +232,16 @@ class Traits(commands.Cog, name="Traits"):
                             if other not in by_cat:
                                 by_cat[other] = []
                             by_cat[other].append(trait)
+                        elif category in ("animal", "animals"):
+                            other = "animals" if category == "animal" else "animal"
+                            if other not in by_cat:
+                                by_cat[other] = []
+                            by_cat[other].append(trait)
+                        elif category in ("mount", "mounts"):
+                            other = "mounts" if category == "mount" else "mount"
+                            if other not in by_cat:
+                                by_cat[other] = []
+                            by_cat[other].append(trait)
 
                     if category == "race" or "/race-traits/" in trait.get("url", "") or any(f"({r})" in trait.get("name", "").lower() for r in ("human", "gnome", "halfling", "elf", "dwarf", "orc", "half-elf", "half-orc", "aasimar")):
                         race_list.append(trait)
@@ -136,8 +255,6 @@ class Traits(commands.Cog, name="Traits"):
     async def _is_admin(self, user: Any) -> bool:
         if not user:
             return False
-        if getattr(user, "guild_permissions", None) and user.guild_permissions.administrator:
-            return True
         try:
             from admin import is_user_authorized
             if await is_user_authorized(self.bot, user):
@@ -175,7 +292,8 @@ class Traits(commands.Cog, name="Traits"):
 
         sorted_pool = sorted(pool, key=lambda x: x.get("name", "").lower())
         total_traits = len(sorted_pool)
-        PAGE_SIZE = 25
+        # Keep combat names compact because the category has many entries.
+        PAGE_SIZE = total_traits if cat_key == "combat" else 25
         total_pages = (total_traits + PAGE_SIZE - 1) // PAGE_SIZE
 
         author_user = getattr(ctx, "author", getattr(ctx, "user", None))
@@ -188,7 +306,7 @@ class Traits(commands.Cog, name="Traits"):
             for idx, t in enumerate(chunk, start=page_idx * PAGE_SIZE + 1):
                 tname = t.get("name", "Unknown")
                 turl = t.get("url", "")
-                if turl:
+                if turl and cat_key != "combat":
                     lines.append(f"`{idx:02d}.` [{tname}]({turl})")
                 else:
                     lines.append(f"`{idx:02d}.` **{tname}**")
@@ -201,7 +319,7 @@ class Traits(commands.Cog, name="Traits"):
                 ),
                 color=discord.Color.from_rgb(114, 137, 218)
             )
-            footer_text = f"Page {page_idx + 1}/{total_pages} | Mineria RPG | Admin"
+            footer_text = f"Page {page_idx + 1}/{total_pages} | Mineria RPG | Traits"
             if avatar_url:
                 embed.set_footer(text=footer_text, icon_url=avatar_url)
             else:
@@ -209,12 +327,11 @@ class Traits(commands.Cog, name="Traits"):
 
             embeds.append(embed)
 
-        for i in range(0, len(embeds), 5):
-            chunk_embeds = embeds[i : i + 5]
-            if len(chunk_embeds) == 1:
-                await ctx.send(embed=chunk_embeds[0])
-            else:
-                await ctx.send(embeds=chunk_embeds)
+        # Discord limits the combined size of all embeds in a message to
+        # 6000 characters. A five-page batch can exceed that even when each
+        # page is individually valid, so send each page as its own message.
+        for embed in embeds:
+            await ctx.send(embed=embed)
 
     @staticmethod
     def _is_race_match(trait_name: str, race_query: str) -> bool:
@@ -336,31 +453,35 @@ class Traits(commands.Cog, name="Traits"):
             title="Mineria Trait System Guide",
             description=(
                 "Characters draw **3 traits** across distinct categories during character creation.\n"
-                "Traits grant unique background bonuses, combat options, and roleplay flavor."
+                "Traits grant unique background bonuses, combat options, and roleplay flavor.\n"
+                "Your latest 3 traits are excluded from your next draw; reroll results become the next protected set."
             ),
             color=discord.Color.from_rgb(114, 137, 218)
         )
 
         cat_meta = [
-            ("Combat", "combat", "Physical combat, initiative bonuses & attack maneuvers"),
-            ("Magic", "magic", "Spellcasting modifiers, concentration & metamagic"),
-            ("Faith", "faith", "Sacred devotion, spiritual conviction & divine favor"),
-            ("Social", "social", "Persuasion, bluff, diplomacy & interpersonal influence"),
-            ("Race", "race", "Heritage traits (e.g. `race(human)`, `race(elf)`, `race(dwarf)`)"),
-            ("Tactic", "tactic", "Battlefield coordination, teamwork & defensive tactics"),
-            ("Craft", "craft", "Alchemy, blacksmithing & artisan production"),
-            ("Underworld", "underworld", "Crime, stealth, thievery & streetwise subterfuge"),
-            ("Scholar", "scholar", "Academic research, archives, lore & languages"),
-            ("Nature", "nature", "Wilderness survival, fauna/flora & biome adaptation"),
-            ("Regional", "regional", "Homeland origins, terrain & regional folklore"),
-            ("Religion", "religion", "Deity patronage, sacred tenets & dogma"),
-            ("Plane", "plane", "Planar ancestry, Great Beyond & elemental adaptability"),
-            ("Campaign", "campaign", "Adventure milestones & campaign storyline hooks"),
-            ("Equipment", "equipment", "Specialized arms, ancestral armor & heirloom gear"),
-            ("Family", "family", "Noble bloodlines, household traditions & legacies"),
-            ("Mount", "mount", "Mounted combat, loyal steeds & beast bonding"),
-            ("Occult", "occult", "Spiritual entities, mediums, eldritch lore & curses"),
-            ("Urban", "urban", "Metropolitan life, city streets & civic influence"),
+            ("Combat", "combat", "Weapon training, battle maneuvers, initiative & fighting grit"),
+            ("Magic", "magic", "Spellcraft, magical schools, concentration & metamagic"),
+            ("Faith", "faith", "Divine devotion, sacred vows, spiritual resolve & blessings"),
+            ("Social", "social", "Diplomacy, persuasion, deception, reputation & influence"),
+            ("Race", "race", "Ancestry, heritage and culture; specify with `race(human)` or `race(elf)`"),
+            ("Tactic", "tactic", "Team coordination, battlefield positioning & tactical defense"),
+            ("Craft", "craft", "Alchemy, smithing, artisan skill & making useful goods"),
+            ("Underworld", "underworld", "Stealth, crime, street contacts, smuggling & illicit trade"),
+            ("Scholar", "scholar", "Research, languages, archives, lore & academic training"),
+            ("Hunter", "hunter", "Tracking, favored prey, fieldcraft & a hunter's instincts"),
+            ("Nature", "nature", "Plants, animals, wild places, druidcraft & wilderness survival"),
+            ("Regional", "regional", "Homeland roots, local customs, terrain & regional knowledge"),
+            ("Religion", "religion", "Deity worship, religious training, rites & sacred traditions"),
+            ("Plane", "plane", "Planar origins, extraplanar lore & elemental forces"),
+            ("Campaign", "campaign", "Campaign events, personal milestones, factions & story hooks"),
+            ("Equipment", "equipment", "Distinctive weapons, armor, heirlooms & specialized gear"),
+            ("Family", "family", "Family ties, inherited duties, ancestry & household traditions"),
+            ("Nobility", "nobility", "Noble birth, courtly manners, political ties & privilege"),
+            ("Mount", "mount", "Riding skill, mounted combat, loyal steeds & mounted travel"),
+            ("Animal", "animal", "Animal bonds, handling, companions, familiars & trained beasts"),
+            ("Occult", "occult", "Spirits, mediums, curses & hidden supernatural knowledge"),
+            ("Urban", "urban", "City life, local networks, urban survival & crowded streets"),
         ]
 
         cat_lines: List[str] = []
@@ -384,28 +505,16 @@ class Traits(commands.Cog, name="Traits"):
                 known_keys.add(key)
                 known_keys.add(canonical)
 
-        mid = (len(cat_lines) + 1) // 2
-        part1 = cat_lines[:mid]
-        part2 = cat_lines[mid:]
-
-        embed.add_field(
-            name="AVAILABLE TRAIT CATEGORIES (1/2)",
-            value="\n".join(part1),
-            inline=False
-        )
-        embed.add_field(
-            name="AVAILABLE TRAIT CATEGORIES (2/2)",
-            value="\n".join(part2),
-            inline=False
-        )
+        embed.description += "\n\n**AVAILABLE TRAIT CATEGORIES**\n" + "\n".join(cat_lines)
 
         embed.add_field(
             name="COMMAND USAGE & EXAMPLES",
             value=(
-                "• `!trait <cat1> <cat2> <cat3>` -> Draw 3 categories (e.g. `!trait combat social magic`)\n"
-                "• `!trait race(<race>) <c1> <c2>` -> Include race trait (e.g. `!trait race(elf) combat faith`)\n"
-                "• `!trait random 3` -> Draw from 3 distinct random categories\n"
-                "• `!trait <category> all` -> (Admin) List all traits in category (e.g. `!trait plane all`)"
+                "• `!trait <cat1> <cat2> <cat3>` — Draw one trait from each category (e.g. `!trait hunter nature animal`)\n"
+                "• `!trait race(<race>) <cat1> <cat2>` — Include a race trait (e.g. `!trait race(elf) combat faith`)\n"
+                "• `!trait random 3` — Draw from 3 distinct random categories\n"
+                "• `!trait <category> all` — List every trait in a category (e.g. `!trait hunter all`)\n"
+                "• `!trait` — Open this guide"
             ),
             inline=False
         )
@@ -413,9 +522,9 @@ class Traits(commands.Cog, name="Traits"):
         embed.add_field(
             name="REROLL (24-HOUR WINDOW)",
             value=(
-                "• `!trait reroll <1/2/3>` -> Rerolls specific trait slot (e.g. `!trait reroll 1 2`)\n"
-                "• `!trait reroll <category>` -> Rerolls only that category (e.g. `!trait reroll combat`)\n"
-                "• `!trait reroll all` -> Rerolls all 3 drawn traits"
+                "• `!trait reroll <1/2/3>` — Reroll specific trait slots (e.g. `!trait reroll 1 2`)\n"
+                "• `!trait reroll <category>` — Reroll only that category (e.g. `!trait reroll combat`)\n"
+                "• `!trait reroll all` — Reroll all 3 traits; the new results are protected on your next draw"
             ),
             inline=False
         )
@@ -453,9 +562,11 @@ class Traits(commands.Cog, name="Traits"):
 
         tokens_lower = [t.lower() for t in cleaned_tokens]
         if "all" in tokens_lower:
+            from admin import get_command_settings, is_command_admin_only
+            settings = await get_command_settings()
             user = getattr(ctx, "author", getattr(ctx, "user", None))
-            if not await self._is_admin(user):
-                await ctx.send("Access Denied: This command is restricted to administrators.")
+            if is_command_admin_only("trait all", settings) and not await self._is_admin(user):
+                await ctx.send("Access Denied: This command is restricted to authorized administrators.")
                 return
 
             cat_tokens = [t for t in tokens_lower if t != "all"]
@@ -599,9 +710,14 @@ class Traits(commands.Cog, name="Traits"):
                     errors.append("random")
 
         results: List[Optional[Dict[str, Any]]] = []
+        user = getattr(ctx, "author", getattr(ctx, "user", None))
+        user_id = user.id if user else 0
+        blocked_names = self.blocked_traits.get(user_id, set()) if user_id else set()
         for t, val in resolved_order:
-            exclude_names = {tr.get("name") for tr in results if tr and tr.get("name")}
+            exclude_names = blocked_names | {tr.get("name") for tr in results if tr and tr.get("name")}
             selected = self._select_trait(t, val, race, exclude_names)
+            if not selected and blocked_names:
+                selected = self._select_trait(t, val, race, {tr.get("name") for tr in results if tr and tr.get("name")})
             if selected:
                 results.append(selected)
             else:
@@ -622,9 +738,10 @@ class Traits(commands.Cog, name="Traits"):
         embed = self._build_trait_embed(results, race, errors)
         sent_message = await ctx.send(embed=embed)
 
-        user = getattr(ctx, "author", getattr(ctx, "user", None))
-        user_id = user.id if user else 0
         if user_id:
+            self.blocked_traits[user_id] = {
+                tr.get("name") for tr in results if tr and tr.get("name")
+            }
             self.last_rolls[user_id] = {
                 "message": sent_message,
                 "race": race,
@@ -641,16 +758,24 @@ class Traits(commands.Cog, name="Traits"):
 
     @trait.command(name="all")
     async def trait_all(self, ctx: commands.Context, *, category: Optional[str] = None) -> None:
-        user = ctx.author
-        if not await self._is_admin(user):
-            await ctx.send("Access Denied: This command is restricted to administrators.")
-            return
-
         if not category:
             await ctx.send("Please specify the category to list.\nUsage: `!trait all <category>` or `!trait <category> all` (e.g. `!trait all plane`)")
             return
 
-        await self._send_all_category_traits(ctx, category.strip())
+        # Accept both command forms: `!trait all combat` and
+        # `!trait combat all`. With a greedy category argument, the latter
+        # reaches this subcommand as the literal string "combat all".
+        category_tokens = category.split()
+        if category_tokens and category_tokens[-1].lower() == "all":
+            category_tokens.pop()
+        elif category_tokens and category_tokens[0].lower() == "all":
+            category_tokens.pop(0)
+
+        if not category_tokens:
+            await ctx.send("Please specify the category to list.\nUsage: `!trait all <category>` or `!trait <category> all` (e.g. `!trait combat all`)")
+            return
+
+        await self._send_all_category_traits(ctx, " ".join(category_tokens))
 
     @trait.command(name="reroll", aliases=["rr"])
     async def reroll(self, ctx: commands.Context, *args: str) -> None:
@@ -716,7 +841,7 @@ class Traits(commands.Cog, name="Traits"):
                             if idx not in indices_to_reroll:
                                 indices_to_reroll.append(idx)
                             found = True
-                        elif t_type == "race" and arg_lower == "race":
+                        elif t_type == "race" and (arg_lower in ("race", "r") or (race and arg_lower == race.lower()) or (race and arg_lower == f"race({race.lower()})")):
                             if idx not in indices_to_reroll:
                                 indices_to_reroll.append(idx)
                             found = True
@@ -781,33 +906,27 @@ class Traits(commands.Cog, name="Traits"):
 
         self.last_rolls[user_id]["results"] = results
         self.last_rolls[user_id]["time"] = time.time()
+        self.blocked_traits[user_id] = {
+            tr.get("name") for tr in results if tr and tr.get("name")
+        }
 
         await _safe_delete(ctx)
 
     async def _trait_categories_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> List[app_commands.Choice[str]]:
-        standard = [
-            "Combat", "Magic", "Faith", "Social", "Race", "Campaign", "Equipment", "Regional", "Religion", "Family", "Mount", "Plane", "Craft", "Nature", "Underworld", "Scholar", "Occult", "Tactic", "Urban"
-        ]
         curr_lower = current.lower().strip()
         choices = []
-
-        for cat in standard:
-            aliases = [k for k, v in CATEGORY_ALIASES.items() if v == cat.lower()]
-            if not curr_lower or curr_lower in cat.lower() or any(curr_lower in a for a in aliases):
-                choices.append(app_commands.Choice(name=cat, value=cat.lower()))
-
-        standard_lowers = {s.lower() for s in standard}
-        for cat in sorted(self.traits_by_cat.keys()):
-            canonical = CATEGORY_ALIASES.get(cat, cat)
-            if canonical not in standard_lowers and cat not in standard_lowers:
-                cap_cat = cat.capitalize()
-                if not curr_lower or curr_lower in cat.lower():
-                    choices.append(app_commands.Choice(name=cap_cat, value=cat.lower()))
-                    if len(choices) >= 25:
-                        break
-
+        categories = {
+            CATEGORY_ALIASES.get(category, category)
+            for category in self.traits_by_cat
+        }
+        for category in sorted(categories):
+            aliases = [alias for alias, canonical in CATEGORY_ALIASES.items() if canonical == category]
+            if not curr_lower or curr_lower in category or any(curr_lower in alias for alias in aliases):
+                choices.append(app_commands.Choice(name=category.capitalize(), value=category))
+            if len(choices) >= 25:
+                break
         return choices[:25]
 
     async def _trait_race_autocomplete(
@@ -817,7 +936,7 @@ class Traits(commands.Cog, name="Traits"):
             races = await load_json("races.json")
             curr_lower = current.lower().strip()
             choices = []
-            for rname in races.keys():
+            for rname in races:
                 if not curr_lower or curr_lower in rname.lower():
                     choices.append(app_commands.Choice(name=rname[:100], value=rname[:100]))
                     if len(choices) >= 25:
@@ -849,6 +968,7 @@ class Traits(commands.Cog, name="Traits"):
         if race:
             args.append(f"race({race})")
 
+        await interaction.response.defer()
         adapter = InteractionContextAdapter(interaction, self.bot)
         await self._execute_trait_roll(adapter, *args)
 
@@ -876,13 +996,10 @@ class Traits(commands.Cog, name="Traits"):
     ) -> List[app_commands.Choice[str]]:
         return await self._trait_race_autocomplete(interaction, current)
 
-    @app_commands.command(name="trait_all", description="[Admin] List all traits in the specified category")
+    @app_commands.command(name="trait_all", description="List all traits in the specified category")
     @app_commands.describe(category="Trait category to list (e.g. Plane, Craft, Combat)")
     async def slash_trait_all(self, interaction: discord.Interaction, category: str) -> None:
-        if not await self._is_admin(interaction.user):
-            await interaction.response.send_message("Access Denied: This command is restricted to administrators.", ephemeral=True)
-            return
-
+        await interaction.response.defer()
         adapter = InteractionContextAdapter(interaction, self.bot)
         await self._send_all_category_traits(adapter, category)
 

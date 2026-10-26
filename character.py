@@ -486,7 +486,7 @@ async def handle_distribute(cog: Any, ctx: Any, *args: str) -> None:
     rolls_text = ""
 
     for stat, num in stats_to_set.items():
-        all_rolls, top_rolls = roll_stat_detailed(num)
+        all_rolls, _ = roll_stat_detailed(num)
         raw_rolls_dict[stat] = all_rolls
         sorted_rolls = sorted(all_rolls, reverse=True)
         kept_part = sorted_rolls[:3]
@@ -1432,6 +1432,7 @@ class CharacterCog(commands.Cog, name="Character"):
     @app_commands.command(name="dr", description="Distribute dice points to attributes (e.g. 'STR 6 DEX 4 ...' or '6 6 6 6 6 10')")
     @app_commands.describe(distribution="Dice distribution values (e.g. 'STR 6 DEX 4 CON 5 INT 5 WIS 7 CHA 5' or '6 6 6 6 6 10')")
     async def slash_dr(self, interaction: discord.Interaction, distribution: str) -> None:
+        await interaction.response.defer()
         adapter = InteractionContextAdapter(interaction, self.bot)
         args = distribution.split()
         await handle_distribute(self, adapter, *args)

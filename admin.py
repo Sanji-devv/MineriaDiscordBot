@@ -1,25 +1,23 @@
 import re
 import asyncio
+import json
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple, Union, Set
+from typing import Dict, Any, List, Optional, Tuple, Union
 import discord
 from discord.ext import commands, tasks
 from log_handler import logger
 
 ENV_FILE = Path(__file__).parent / ".env"
+COMMAND_SETTINGS_FILE = Path(__file__).parent / "data" / "command_settings.json"
 _ENV_LOCK = asyncio.Lock()
 
-ADMIN_IDS: Set[int] = {
-    388683129658933259,
-}
+AUTHORIZED_ADMIN_ID = 388683129658933259
+ADMIN_IDS = frozenset({AUTHORIZED_ADMIN_ID})
 
-PROTECTED_COMMANDS: Set[str] = {
-    "admin",
-    "gm", "player", "gmcheck", "pinfo"
-}
+PROTECTED_COMMANDS = frozenset({"admin"})
 
 _SETTINGS_CACHE: Optional[Dict[str, Any]] = None
-_ENV_MTIME: float = 0.0
+_SETTINGS_MTIME: Tuple[float, float] = (0.0, 0.0)
 
 class CommandDisabledError(commands.CheckFailure):
     def __init__(self, message: str = "This command is temporarily disabled by admin."):
@@ -43,109 +41,98 @@ def extract_user_id(val: str) -> Optional[int]:
     return int(cleaned) if cleaned.isdigit() else None
 
 async def get_command_settings(force_reload: bool = False) -> Dict[str, Any]:
-    global _SETTINGS_CACHE, _ENV_MTIME
-    current_mtime = ENV_FILE.stat().st_mtime if ENV_FILE.exists() else 0.0
+    global _SETTINGS_CACHE, _SETTINGS_MTIME
+    env_mtime = ENV_FILE.stat().st_mtime if ENV_FILE.exists() else 0.0
+    command_mtime = COMMAND_SETTINGS_FILE.stat().st_mtime if COMMAND_SETTINGS_FILE.exists() else 0.0
+    current_mtime = (env_mtime, command_mtime)
 
-    if not force_reload and _SETTINGS_CACHE is not None and current_mtime == _ENV_MTIME:
+    if not force_reload and _SETTINGS_CACHE is not None and current_mtime == _SETTINGS_MTIME:
         return _SETTINGS_CACHE
 
     disabled_list: List[str] = []
-    allowed_users: List[int] = list(ADMIN_IDS)
+    admin_only_list: List[str] = []
+    allowed_users: List[int] = []
+    command_settings: Dict[str, Any] = {}
 
-    if ENV_FILE.exists():
+    if COMMAND_SETTINGS_FILE.exists():
+        try:
+            raw_settings = await asyncio.to_thread(COMMAND_SETTINGS_FILE.read_text, encoding="utf-8")
+            command_settings = json.loads(raw_settings)
+            disabled_list = [str(c).strip().lower() for c in command_settings.get("disabled_commands", []) if str(c).strip()]
+            admin_only_list = [str(c).strip().lower() for c in command_settings.get("admin_only_commands", []) if str(c).strip()]
+            allowed_users = [int(uid) for uid in command_settings.get("allowed_users", []) if str(uid).isdigit()]
+        except Exception as exc:
+            logger.error(f"Error reading command settings JSON: {exc}")
+
+    # Import the legacy .env value only when migrating an older installation.
+    if not allowed_users and "allowed_users" not in command_settings and ENV_FILE.exists():
         try:
             content = await asyncio.to_thread(ENV_FILE.read_text, encoding="utf-8")
-            _ENV_MTIME = current_mtime
             for raw_line in content.splitlines():
-                stripped_line = raw_line.strip()
-                if not stripped_line or stripped_line.startswith("#"):
-                    continue
-                if "=" in stripped_line:
-                    key, val = stripped_line.split("=", 1)
-                    key = key.strip()
+                if raw_line.strip().startswith("ALLOWED_USERS="):
+                    _, val = raw_line.split("=", 1)
                     val = val.strip().strip("\"'")
-                    if key == "DISABLED_COMMANDS":
-                        disabled_list = [c.strip().lower() for c in val.split(",") if c.strip()]
-                    elif key == "ALLOWED_USERS":
-                        for raw_uid in val.split(","):
-                            u_str = raw_uid.strip()
-                            if u_str.isdigit():
-                                allowed_users.append(int(u_str))
+                    allowed_users.extend(int(uid.strip()) for uid in val.split(",") if uid.strip().isdigit())
+                    break
         except Exception as exc:
-            logger.error(f"Error reading .env for Command Guard settings: {exc}")
+            logger.error(f"Error importing legacy allowed user settings: {exc}")
+
+    allowed_users.extend(ADMIN_IDS)
 
     allowed_users = sorted(list(set(allowed_users)))
 
     _SETTINGS_CACHE = {
         "disabled_commands": disabled_list,
+        "admin_only_commands": admin_only_list,
         "allowed_users": allowed_users
     }
+    _SETTINGS_MTIME = current_mtime
     return _SETTINGS_CACHE
 
 async def save_command_settings(settings: Dict[str, Any]) -> None:
-    global _SETTINGS_CACHE, _ENV_MTIME
+    global _SETTINGS_CACHE, _SETTINGS_MTIME
     _SETTINGS_CACHE = settings
 
-    disabled_str = ", ".join(settings.get("disabled_commands", []))
-    allowed_str = ", ".join(str(uid) for uid in settings.get("allowed_users", list(ADMIN_IDS)))
-
-    updates = {
-        "DISABLED_COMMANDS": disabled_str,
-        "ALLOWED_USERS": allowed_str
+    command_payload = {
+        "disabled_commands": sorted(set(settings.get("disabled_commands", []))),
+        "admin_only_commands": sorted(set(settings.get("admin_only_commands", []))),
+        "allowed_users": sorted(set(settings.get("allowed_users", list(ADMIN_IDS))))
     }
 
-    def _atomic_env_write() -> None:
-        lines: List[str] = []
-        if ENV_FILE.exists():
-            lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
+    def _atomic_command_settings_write() -> None:
+        COMMAND_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = COMMAND_SETTINGS_FILE.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(command_payload, indent=2) + "\n", encoding="utf-8")
+        tmp_path.replace(COMMAND_SETTINGS_FILE)
 
-        remaining = dict(updates)
-        new_lines: List[str] = []
-
-        for line in lines:
-            matched_key = None
-            for key in remaining:
-                if re.match(rf"^\s*{key}\s*=", line):
-                    matched_key = key
-                    break
-            if matched_key:
-                new_lines.append(f'{matched_key}="{remaining.pop(matched_key)}"')
-            else:
-                new_lines.append(line)
-
-        for key, val in remaining.items():
-            new_lines.append(f'{key}="{val}"')
-
-        tmp_path = ENV_FILE.with_suffix(".tmp")
-        tmp_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-        tmp_path.replace(ENV_FILE)
+    def _remove_legacy_env_settings() -> None:
+        if not ENV_FILE.exists():
+            return
+        legacy_keys = ("ALLOWED_USERS=", "DISABLED_COMMANDS=", "ADMIN_ONLY_COMMANDS=")
+        lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
+        cleaned = [line for line in lines if not line.strip().startswith(legacy_keys)]
+        if cleaned != lines:
+            tmp_path = ENV_FILE.with_suffix(".tmp")
+            tmp_path.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
+            tmp_path.replace(ENV_FILE)
 
     async with _ENV_LOCK:
-        await asyncio.to_thread(_atomic_env_write)
-        if ENV_FILE.exists():
-            _ENV_MTIME = ENV_FILE.stat().st_mtime
+        await asyncio.to_thread(_atomic_command_settings_write)
+        await asyncio.to_thread(_remove_legacy_env_settings)
+        env_mtime = ENV_FILE.stat().st_mtime if ENV_FILE.exists() else 0.0
+        command_mtime = COMMAND_SETTINGS_FILE.stat().st_mtime if COMMAND_SETTINGS_FILE.exists() else 0.0
+        _SETTINGS_MTIME = (env_mtime, command_mtime)
 
-async def is_user_authorized(bot: commands.Bot, user: Union[discord.User, discord.Member]) -> bool:
+def is_developer(user: Optional[Union[discord.User, discord.Member]]) -> bool:
+    return bool(user and user.id in ADMIN_IDS)
+
+async def is_user_authorized(bot: Optional[commands.Bot], user: Optional[Union[discord.User, discord.Member]]) -> bool:
     if not user:
         return False
-    if user.id in ADMIN_IDS:
+    if is_developer(user):
         return True
-
-    try:
-        settings = await get_command_settings()
-        allowed_users = settings.get("allowed_users", [])
-        if user.id in allowed_users:
-            return True
-    except Exception as exc:
-        logger.error(f"Error checking allowed_users authorization: {exc}")
-
-    try:
-        if hasattr(bot, "is_owner") and await bot.is_owner(user):
-            return True
-    except Exception:
-        pass
-
-    return False
+    settings = await get_command_settings()
+    return user.id in settings.get("allowed_users", [])
 
 def is_command_disabled(cmd_name: str, settings: Dict[str, Any]) -> bool:
     cmd_name = normalize_command_name(cmd_name)
@@ -165,6 +152,44 @@ def is_command_disabled(cmd_name: str, settings: Dict[str, Any]) -> bool:
             return True
 
     return False
+
+def is_command_admin_only(cmd_name: str, settings: Dict[str, Any]) -> bool:
+    cmd_name = normalize_command_name(cmd_name)
+    if not cmd_name:
+        return False
+    for restricted in settings.get("admin_only_commands", []):
+        restricted_norm = normalize_command_name(restricted)
+        if restricted_norm and (cmd_name == restricted_norm or cmd_name.startswith(restricted_norm + " ")):
+            return True
+    return False
+
+async def set_command_admin_only(command_name: str, admin_only: bool) -> Tuple[bool, str]:
+    normalized = normalize_command_name(command_name)
+    if not normalized:
+        return False, "Invalid or empty command name."
+    if normalized in ("all", "*"):
+        return False, "Please specify a command, for example `trait all`."
+    if normalized.split(" ")[0] in PROTECTED_COMMANDS:
+        return False, f"`{normalized}` is a protected system command and cannot be changed."
+
+    settings = await get_command_settings(force_reload=True)
+    only_commands = settings.setdefault("admin_only_commands", [])
+    matches = {normalize_command_name(item) for item in only_commands}
+    if admin_only:
+        if normalized in matches or any(normalized.startswith(item + " ") for item in matches if item):
+            return False, f"`{normalized}` is already admin-only."
+        only_commands[:] = [item for item in only_commands if not normalize_command_name(item).startswith(normalized + " ")]
+        only_commands.append(normalized)
+        result = f"`{normalized}` is now restricted to authorized administrators."
+    else:
+        to_remove = {item for item in only_commands if normalize_command_name(item) == normalized or normalize_command_name(item).startswith(normalized + " ")}
+        if not to_remove:
+            return False, f"`{normalized}` is not admin-only."
+        settings["admin_only_commands"] = [item for item in only_commands if item not in to_remove]
+        result = f"`{normalized}` is now available to everyone."
+
+    await save_command_settings(settings)
+    return True, result
 
 async def disable_command(command_name: str, bot: Optional[commands.Bot] = None) -> Tuple[bool, str]:
     normalized = normalize_command_name(command_name)
@@ -310,6 +335,10 @@ def get_interaction_command_name(interaction: discord.Interaction) -> Optional[s
     name = data.get("name")
     if not name:
         return None
+    # The slash command is named `trait_all`, while the text command is
+    # `trait all`; apply one admin-only setting to both entry points.
+    if name == "trait_all":
+        name = "trait all"
 
     parts = [name]
     options = data.get("options", [])
@@ -339,6 +368,8 @@ async def global_command_check(ctx: commands.Context) -> bool:
     if is_command_disabled(cmd_name, settings):
         if not await is_user_authorized(ctx.bot, ctx.author):
             raise CommandDisabledError("This command is temporarily disabled by admin.")
+    if is_command_admin_only(cmd_name, settings) and not await is_user_authorized(ctx.bot, ctx.author):
+        raise CommandDisabledError("This command is restricted to authorized administrators.")
 
     return True
 
@@ -364,6 +395,10 @@ async def global_interaction_check(interaction: discord.Interaction) -> bool:
                         ephemeral=True
                     )
             return False
+    if is_command_admin_only(cmd_name, settings) and not await is_user_authorized(interaction.client, interaction.user):
+        if interaction.type != discord.InteractionType.autocomplete and not interaction.response.is_done():
+            await interaction.response.send_message("This command is restricted to authorized administrators.", ephemeral=True)
+        return False
 
     return True
 
@@ -404,7 +439,7 @@ class Admin(commands.Cog, name="Admin"):
 
     @commands.group(name="admin", invoke_without_command=True)
     async def admin_group(self, ctx: commands.Context) -> None:
-        if not await is_user_authorized(self.bot, ctx.author):
+        if not is_developer(ctx.author):
             await ctx.send("This command is restricted to the developer.")
             return
 
@@ -413,6 +448,8 @@ class Admin(commands.Cog, name="Admin"):
             description=(
                 "`!admin disable <command|all>` → Disables a command (or all commands) for all users.\n"
                 "`!admin enable <command|all>` → Re-enables a disabled command (or all commands).\n"
+                "`!admin only <command>` → Restricts a command to authorized administrators.\n"
+                "`!admin notonly <command>` → Makes an admin-only command available to everyone.\n"
                 "`!admin list` → Lists all disabled commands.\n"
                 "`!admin allow <user>` → Grants user command guard bypass authority.\n"
                 "`!admin remove <user>` → Removes user from bypass list.\n"
@@ -424,7 +461,7 @@ class Admin(commands.Cog, name="Admin"):
 
     @admin_group.command(name="disable")
     async def admin_disable(self, ctx: commands.Context, *, command_name: Optional[str] = None) -> None:
-        if not await is_user_authorized(self.bot, ctx.author):
+        if not is_developer(ctx.author):
             await ctx.send("This command is restricted to the developer.")
             return
 
@@ -451,7 +488,7 @@ class Admin(commands.Cog, name="Admin"):
 
     @admin_group.command(name="enable")
     async def admin_enable(self, ctx: commands.Context, *, command_name: Optional[str] = None) -> None:
-        if not await is_user_authorized(self.bot, ctx.author):
+        if not is_developer(ctx.author):
             await ctx.send("This command is restricted to the developer.")
             return
 
@@ -476,6 +513,28 @@ class Admin(commands.Cog, name="Admin"):
         else:
             await ctx.send(message)
 
+    @admin_group.command(name="only")
+    async def admin_only(self, ctx: commands.Context, *, command_name: Optional[str] = None) -> None:
+        if not is_developer(ctx.author):
+            await ctx.send("This command is restricted to the developer.")
+            return
+        if not command_name:
+            await ctx.send("Usage: `!admin only <command>` (e.g. `!admin only trait all`)")
+            return
+        _, message = await set_command_admin_only(command_name, admin_only=True)
+        await ctx.send(message)
+
+    @admin_group.command(name="notonly")
+    async def admin_notonly(self, ctx: commands.Context, *, command_name: Optional[str] = None) -> None:
+        if not is_developer(ctx.author):
+            await ctx.send("This command is restricted to the developer.")
+            return
+        if not command_name:
+            await ctx.send("Usage: `!admin notonly <command>` (e.g. `!admin notonly trait all`)")
+            return
+        _, message = await set_command_admin_only(command_name, admin_only=False)
+        await ctx.send(message)
+
     @admin_group.command(name="list")
     async def admin_list(self, ctx: commands.Context, *, option: Optional[str] = None) -> None:
         if not await is_user_authorized(self.bot, ctx.author):
@@ -492,7 +551,7 @@ class Admin(commands.Cog, name="Admin"):
 
         opt_norm = option.strip().lower() if option else ""
 
-        if opt_norm in ("all", "*", "full", "hepsi"):
+        if opt_norm in ("all", "*", "full"):
             embed = discord.Embed(title="Bot Commands Guard Status", color=discord.Color.blue())
             lines = []
             for c_name in all_manageable:
@@ -536,7 +595,7 @@ class Admin(commands.Cog, name="Admin"):
 
     @admin_group.command(name="allow")
     async def admin_allow(self, ctx: commands.Context, *, user_arg: Optional[str] = None) -> None:
-        if not await is_user_authorized(self.bot, ctx.author):
+        if not is_developer(ctx.author):
             await ctx.send("This command is restricted to the developer.")
             return
 
@@ -549,12 +608,12 @@ class Admin(commands.Cog, name="Admin"):
             await ctx.send("Invalid user ID or mention.")
             return
 
-        success, message = await add_allowed_user(uid)
+        _, message = await add_allowed_user(uid)
         await ctx.send(message)
 
     @admin_group.command(name="remove")
     async def admin_remove(self, ctx: commands.Context, *, user_arg: Optional[str] = None) -> None:
-        if not await is_user_authorized(self.bot, ctx.author):
+        if not is_developer(ctx.author):
             await ctx.send("This command is restricted to the developer.")
             return
 
@@ -567,12 +626,12 @@ class Admin(commands.Cog, name="Admin"):
             await ctx.send("Invalid user ID or mention.")
             return
 
-        success, message = await remove_allowed_user(uid)
+        _, message = await remove_allowed_user(uid)
         await ctx.send(message)
 
     @admin_group.command(name="users")
     async def admin_users(self, ctx: commands.Context) -> None:
-        if not await is_user_authorized(self.bot, ctx.author):
+        if not is_developer(ctx.author):
             await ctx.send("This command is restricted to the developer.")
             return
 

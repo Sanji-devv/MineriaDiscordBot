@@ -9,11 +9,14 @@ from log_handler import logger
 
 class Drawbacks(commands.Cog, name="Drawbacks"):
 
-    EXCLUDED_DRAWBACKS: set = {"Family Ties"}
+    EXCLUDED_DRAWBACKS = frozenset({"Family Ties"})
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.drawbacks: List[Dict[str, Any]] = []
+        # Keep each user's three most recently drawn drawbacks out of their
+        # next draw. This mirrors the trait cooldown and resets on restart.
+        self.recent_drawbacks: Dict[int, List[str]] = {}
         self._load_drawbacks()
 
     def _load_drawbacks(self) -> None:
@@ -31,16 +34,24 @@ class Drawbacks(commands.Cog, name="Drawbacks"):
         except Exception as exc:
             logger.error(f"Error loading drawbacks database: {exc}", exc_info=True)
 
-    def _generate_drawback_embed(self) -> Optional[discord.Embed]:
+    def _generate_drawback_embed(self, user_id: int) -> Optional[discord.Embed]:
         if not self.drawbacks:
             return None
 
         pool = [d for d in self.drawbacks if d.get("name") not in self.EXCLUDED_DRAWBACKS]
-        if not pool:
+        recent_names = set(self.recent_drawbacks.get(user_id, []))
+        available_pool = [d for d in pool if d.get("name") not in recent_names]
+        if not available_pool:
+            available_pool = pool
+        if not available_pool:
             return None
-        selected = random.choice(pool)
+        selected = random.choice(available_pool)
         name = selected.get("name", "Unknown Drawback")
         url = selected.get("url")
+
+        recent = self.recent_drawbacks.setdefault(user_id, [])
+        recent.append(name)
+        self.recent_drawbacks[user_id] = recent[-3:]
 
         desc_text = f"**[{name}]({url})**" if url else f"**{name}**"
 
@@ -60,7 +71,7 @@ class Drawbacks(commands.Cog, name="Drawbacks"):
 
     @commands.command(name="drawback", aliases=["db"])
     async def drawback(self, ctx: commands.Context) -> None:
-        embed = self._generate_drawback_embed()
+        embed = self._generate_drawback_embed(ctx.author.id)
         if not embed:
             await ctx.send("The drawback database is currently empty or unavailable.")
             return
@@ -69,7 +80,7 @@ class Drawbacks(commands.Cog, name="Drawbacks"):
 
     @app_commands.command(name="drawback", description="Draw a random character drawback from the campaign rulebook")
     async def slash_drawback(self, interaction: discord.Interaction) -> None:
-        embed = self._generate_drawback_embed()
+        embed = self._generate_drawback_embed(interaction.user.id)
         if not embed:
             await interaction.response.send_message("The drawback database is currently empty or unavailable.", ephemeral=True)
             return

@@ -13,7 +13,6 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from log_handler import logger
-from admin import ADMIN_IDS, is_user_authorized
 from character import InteractionContextAdapter, load_json
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -425,10 +424,6 @@ class OneTimeCommands(commands.Cog, name="Utility"):
 
     @commands.command(name="gm", aliases=["player", "gmcheck", "pinfo"])
     async def gm_player_command(self, ctx: commands.Context, *, player_query: Optional[str] = None) -> None:
-        if ctx.author.id not in ADMIN_IDS and not await is_user_authorized(self.bot, ctx.author):
-            await ctx.send("This command is restricted to administrators.")
-            return
-
         avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
 
         if not player_query or not player_query.strip():
@@ -812,13 +807,9 @@ class OneTimeCommands(commands.Cog, name="Utility"):
     ) -> List[app_commands.Choice[str]]:
         return await self._kia_character_autocomplete(interaction, current)
 
-    @app_commands.command(name="gm", description="[Admin] Query player GM sessions and character history")
+    @app_commands.command(name="gm", description="Query player GM sessions and character history")
     @app_commands.describe(player_name="Name of the player to query")
     async def slash_gm(self, interaction: discord.Interaction, player_name: Optional[str] = None) -> None:
-        if interaction.user.id not in ADMIN_IDS and not await is_user_authorized(self.bot, interaction.user):
-            await interaction.response.send_message("This command is restricted to administrators.", ephemeral=True)
-            return
-
         await interaction.response.defer()
         adapter = InteractionContextAdapter(interaction, self.bot)
         await self.gm_player_command(adapter, player_query=player_name)

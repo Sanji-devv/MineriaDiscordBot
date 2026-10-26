@@ -104,8 +104,7 @@ def parse_dice_expression(expression: str) -> Union[List[Union[DiceTerm, Modifie
             if sides < 1 or count < 1:
                 return "ZERO_SIDES"
 
-            if count > 100:
-                count = 100
+            count = min(count, 100)
 
             keep_highest = None
             keep_lowest = None

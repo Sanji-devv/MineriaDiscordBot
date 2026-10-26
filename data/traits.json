@@ -18,7 +18,7 @@
     {
       "name": "Bastard",
       "url": "https://www.d20pfsrd.com/traits/campaign-traits/kingmaker/bastard/",
-      "category": "Campaign"
+      "category": "Nobility"
     },
     {
       "name": "Best Friend",
@@ -88,7 +88,7 @@
     {
       "name": "Favored Son/Daughter",
       "url": "https://www.d20pfsrd.com/traits/campaign-traits/rise-of-the-runelords/favored-son-daughter/",
-      "category": "Campaign"
+      "category": "Nobility"
     },
     {
       "name": "Finding Your Kin (3.5E)",
@@ -123,7 +123,7 @@
     {
       "name": "Gnoll Killer",
       "url": "https://www.d20pfsrd.com/traits/campaign-traits/legacy-of-fire/gnoll-killer/",
-      "category": "Campaign"
+      "category": "Hunter"
     },
     {
       "name": "Hero Worship",
@@ -228,7 +228,7 @@
     {
       "name": "Robot Slayer",
       "url": "https://www.d20pfsrd.com/traits/campaign-traits/shattered-star/robot-slayer/",
-      "category": "Campaign"
+      "category": "Hunter"
     },
     {
       "name": "Rostlander (River Lander)",
@@ -418,7 +418,7 @@
     {
       "name": "Evasive Sting",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/evasive-sting/",
-      "category": "Combat"
+      "category": "Hunter"
     },
     {
       "name": "Fencer",
@@ -558,7 +558,7 @@
     {
       "name": "Scarred Descendant",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/scarred-descendant/",
-      "category": "Combat"
+      "category": "Hunter"
     },
     {
       "name": "Slippery (Flower Network)",
@@ -628,11 +628,6 @@
     {
       "name": "Vigilant Battler",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/vigilant-battler/",
-      "category": "Combat"
-    },
-    {
-      "name": "Volatile Fuse",
-      "url": "https://www.d20pfsrd.com/traits/combat-traits/volatile-fuse-combat/",
       "category": "Combat"
     },
     {
@@ -1033,7 +1028,7 @@
     {
       "name": "Loyalty across Lifetimes",
       "url": "https://www.d20pfsrd.com/traits/faith-traits/loyalty-across-lifetimes/",
-      "category": "Faith"
+      "category": "Animal"
     },
     {
       "name": "Masked",
@@ -1093,7 +1088,7 @@
     {
       "name": "River Acumen",
       "url": "https://www.d20pfsrd.com/traits/faith-traits/river-acumen-faith/",
-      "category": "Faith"
+      "category": "Nature"
     },
     {
       "name": "Sacred Conduit",
@@ -1268,7 +1263,7 @@
     {
       "name": "Desperate Speed",
       "url": "https://www.d20pfsrd.com/traits/magic-traits/desperate-speed/",
-      "category": "Magic"
+      "category": "Animal"
     },
     {
       "name": "Distance Aptitude",
@@ -1333,7 +1328,7 @@
     {
       "name": "Greater Link",
       "url": "https://www.d20pfsrd.com/traits/magic-traits/greater-link/",
-      "category": "Magic"
+      "category": "Animal"
     },
     {
       "name": "Greater Purpose",
@@ -1383,7 +1378,7 @@
     {
       "name": "Linked Surge",
       "url": "https://www.d20pfsrd.com/traits/magic-traits/linked-surge/",
-      "category": "Magic"
+      "category": "Animal"
     },
     {
       "name": "Lunar Birth",
@@ -1513,7 +1508,7 @@
     {
       "name": "Twinned Presence",
       "url": "https://www.d20pfsrd.com/traits/magic-traits/twinned-presence/",
-      "category": "Magic"
+      "category": "Animal"
     },
     {
       "name": "Twisted Tattoo",
@@ -1578,7 +1573,7 @@
     {
       "name": "Ash Bane (Regional, Wastelands)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/ash-bane-regional-wastelands/",
-      "category": "Nature"
+      "category": "Hunter"
     },
     {
       "name": "Beachcomber (Region, Coastal or River)",
@@ -1593,12 +1588,12 @@
     {
       "name": "Beastkin",
       "url": "https://www.d20pfsrd.com/traits/social-traits/beastkin/",
-      "category": "Nature"
+      "category": "Animal"
     },
     {
       "name": "Blight’s Bane",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/blights-bane-combat/",
-      "category": "Nature"
+      "category": "Hunter"
     },
     {
       "name": "Bountiful Herb-Lore",
@@ -1618,7 +1613,7 @@
     {
       "name": "Cliff Jumper",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/cliff-jumper/",
-      "category": "Nature"
+      "category": "Regional"
     },
     {
       "name": "Cliff Strider (Regional)",
@@ -1668,7 +1663,7 @@
     {
       "name": "Dragon Tracker",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/dragon-tracker/",
-      "category": "Nature"
+      "category": "Hunter"
     },
     {
       "name": "Eyes of the Wild",
@@ -1678,7 +1673,7 @@
     {
       "name": "Faith's Hunter",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/faith-s-hunter/",
-      "category": "Nature"
+      "category": "Hunter"
     },
     {
       "name": "Feral Speech",
@@ -1708,22 +1703,22 @@
     {
       "name": "Hill Fighter",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/hill-fighter/",
-      "category": "Nature"
+      "category": "Combat"
     },
     {
       "name": "House of Green Mothers Pupil (Magic)",
       "url": "https://www.d20pfsrd.com/traits/magic-traits/house-of-green-mothers-pupil-magic/",
-      "category": "Nature"
+      "category": "Animal"
     },
     {
       "name": "Hunter's Blood",
       "url": "https://www.d20pfsrd.com/traits/social-traits/hunter-s-blood/",
-      "category": "Nature"
+      "category": "Hunter"
     },
     {
       "name": "Hunter's Knack",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/hunter-s-knack/",
-      "category": "Nature"
+      "category": "Hunter"
     },
     {
       "name": "Iron Lungs (Usually Under Marshlands)",
@@ -1733,7 +1728,7 @@
     {
       "name": "Jungle Fighter",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/jungle-fighter/",
-      "category": "Nature"
+      "category": "Combat"
     },
     {
       "name": "Jungle Guide",
@@ -1758,12 +1753,12 @@
     {
       "name": "Log Roller (Forest)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/log-roller/",
-      "category": "Nature"
+      "category": "Regional"
     },
     {
       "name": "Mammoth Master",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/mammoth-master-regional-realm-of-the-mammoth-lords/",
-      "category": "Nature"
+      "category": "Animal"
     },
     {
       "name": "Master of Peaks",
@@ -1798,7 +1793,7 @@
     {
       "name": "Pearl Diver",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/pearl-diver-xidao/",
-      "category": "Nature"
+      "category": "Regional"
     },
     {
       "name": "Plainsman",
@@ -1808,22 +1803,22 @@
     {
       "name": "Rancher",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/rancher/",
-      "category": "Nature"
+      "category": "Animal"
     },
     {
       "name": "River Fighter",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/river-fighter/",
-      "category": "Nature"
+      "category": "Combat"
     },
     {
       "name": "Riverfolk",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/riverfolk-regional-river-kingdoms/",
-      "category": "Nature"
+      "category": "Regional"
     },
     {
       "name": "Rugged Dragon Hunter",
       "url": "https://www.d20pfsrd.com/traits/social-traits/rugged-dragon-hunter-social/",
-      "category": "Nature"
+      "category": "Hunter"
     },
     {
       "name": "Savage",
@@ -1833,17 +1828,17 @@
     {
       "name": "Savanna Hunter",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/savanna-hunter/",
-      "category": "Nature"
+      "category": "Combat"
     },
     {
       "name": "Savannah Child (Plains)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/trait-regional-savannah-child/",
-      "category": "Nature"
+      "category": "Regional"
     },
     {
       "name": "Scaly Ally",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/scaly-ally/",
-      "category": "Nature"
+      "category": "Animal"
     },
     {
       "name": "Sea-Souled (Coastline or Island)",
@@ -1863,7 +1858,7 @@
     {
       "name": "Sharp Eyes (Region, Tundra)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/sharp-eyes-region-tundra/",
-      "category": "Nature"
+      "category": "Regional"
     },
     {
       "name": "Silent Hunter",
@@ -1873,7 +1868,7 @@
     {
       "name": "Snake Handler (Regional)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/snake-handler-regional/",
-      "category": "Nature"
+      "category": "Animal"
     },
     {
       "name": "Snowbound",
@@ -1883,12 +1878,17 @@
     {
       "name": "Snowstride (Usually Under Cold Mountains)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/snowstride-usually-under-cold-mountains/",
-      "category": "Nature"
+      "category": "Regional"
     },
     {
       "name": "Sodden Child (Regional)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/sodden-child-regional/",
       "category": "Nature"
+    },
+    {
+      "name": "Cellular Match",
+      "url": "https://www.d20pfsrd.com/traits/race-traits/cellular-match/",
+      "category": "Race"
     },
     {
       "name": "Stormrunner",
@@ -1923,7 +1923,7 @@
     {
       "name": "Surefooted Ascent (Region, Hill or Mountain)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/surefooted-ascent-region-hill-or-mountain/",
-      "category": "Nature"
+      "category": "Regional"
     },
     {
       "name": "Survivalist",
@@ -1953,7 +1953,7 @@
     {
       "name": "Tracker of the Society (Ranger, Society)",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/tracker-of-the-society-ranger-pathfinder-society/",
-      "category": "Nature"
+      "category": "Hunter"
     },
     {
       "name": "Tribesman",
@@ -1973,7 +1973,7 @@
     {
       "name": "Undergrowth Specialist",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/undergrowth-specialist-combat/",
-      "category": "Nature"
+      "category": "Combat"
     },
     {
       "name": "Veteran Jungle Guide",
@@ -1983,12 +1983,12 @@
     {
       "name": "Voice of Monsters",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/voice-of-monsters/",
-      "category": "Nature"
+      "category": "Animal"
     },
     {
       "name": "Wasp Whisperer",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/wasp-whisperer/",
-      "category": "Nature"
+      "category": "Animal"
     },
     {
       "name": "Wasteland Vagrant",
@@ -2033,12 +2033,12 @@
     {
       "name": "Clockwork Engineer (Combat)",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/clockwork-engineer-combat/",
-      "category": "None"
+      "category": "Combat"
     },
     {
       "name": "Aberration Hunter",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/aberration-hunter-regional/",
-      "category": "Occult"
+      "category": "Hunter"
     },
     {
       "name": "Alien Experiment",
@@ -2078,7 +2078,7 @@
     {
       "name": "Corpse Hunter",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/corpse-hunter/",
-      "category": "Occult"
+      "category": "Hunter"
     },
     {
       "name": "Cypher Resistance",
@@ -2288,7 +2288,7 @@
     {
       "name": "Undead Slayer",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/undead-slayer/",
-      "category": "Occult"
+      "category": "Hunter"
     },
     {
       "name": "Unnatural Presence (Old Cults)",
@@ -2328,7 +2328,7 @@
     {
       "name": "Aquatic Survivalist (Plane of Water)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/aquatic-survivalist-plane-of-water/",
-      "category": "Plane"
+      "category": "Hunter"
     },
     {
       "name": "Aspiring Hell Knight",
@@ -2343,7 +2343,7 @@
     {
       "name": "Betrayed Ex-Noble (City of Brass)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/betrayed-ex-noble-city-of-brass/",
-      "category": "Plane"
+      "category": "Nobility"
     },
     {
       "name": "Channel the Earth (Plane of Earth)",
@@ -2363,17 +2363,17 @@
     {
       "name": "Demon Hunter",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/asmodean-demon-hunter-ruler-of-hell/",
-      "category": "Plane"
+      "category": "Hunter"
     },
     {
       "name": "Demon Slayer",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/demon-slayer-mendev-crusaders/",
-      "category": "Plane"
+      "category": "Hunter"
     },
     {
       "name": "Demon Slayer",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/demon-slayer/",
-      "category": "Plane"
+      "category": "Hunter"
     },
     {
       "name": "Demon Smiter",
@@ -2458,7 +2458,7 @@
     {
       "name": "Hunter of Outsiders",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/whisper-woods-hunter/",
-      "category": "Plane"
+      "category": "Hunter"
     },
     {
       "name": "Infernal Bastard",
@@ -2593,12 +2593,12 @@
     {
       "name": "Animal Friend (Gnome)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/animal-friend-gnome/",
-      "category": "Race"
+      "category": "Animal"
     },
     {
       "name": "Animalistic Affliction",
       "url": "https://www.d20pfsrd.com/traits/race-traits/animalistic-affliction/",
-      "category": "Race"
+      "category": "Animal"
     },
     {
       "name": "Anticipate Evil (Tiefling)",
@@ -2658,7 +2658,7 @@
     {
       "name": "Beast Bully (Tiefling)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/beast-bully-tiefling/",
-      "category": "Race"
+      "category": "Animal"
     },
     {
       "name": "Bent Body (Tiefling)",
@@ -2808,12 +2808,7 @@
     {
       "name": "Celestial Tracker (Aasimar)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/celestial-tracker-aasimar-angelkin/",
-      "category": "Race"
-    },
-    {
-      "name": "Cellular Match",
-      "url": "https://www.d20pfsrd.com/traits/race-traits/cellular-match/",
-      "category": "Race"
+      "category": "Hunter"
     },
     {
       "name": "Cellular Match (Android)",
@@ -3008,7 +3003,7 @@
     {
       "name": "Elven Serenity (Half-Elf raised by Elves)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/elven-serenity-racial-trait-half-elf-raised-by-elves/",
-      "category": "Race"
+      "category": "Animal"
     },
     {
       "name": "Enduring Heritage (Tiefling)",
@@ -3843,7 +3838,7 @@
     {
       "name": "Survivalist (Human)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/survivalist-human/",
-      "category": "Race"
+      "category": "Nature"
     },
     {
       "name": "Tactile Telekinesis (Lashunta)",
@@ -3868,7 +3863,7 @@
     {
       "name": "Thoroughbred (Human)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/thoroughbred-human/",
-      "category": "Race"
+      "category": "Animal"
     },
     {
       "name": "Thrall Spotter (Dhampir)",
@@ -3923,7 +3918,7 @@
     {
       "name": "Triaxian Dragonslayer (Triaxian)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/triaxian-dragonslayer-triaxian/",
-      "category": "Race"
+      "category": "Hunter"
     },
     {
       "name": "Trickster (Gnome)",
@@ -3963,7 +3958,7 @@
     {
       "name": "Undead Slayer (Dhampir)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/undead-slayer-dhampir/",
-      "category": "Race"
+      "category": "Hunter"
     },
     {
       "name": "Underling (Tiefling)",
@@ -4048,17 +4043,17 @@
     {
       "name": "Wild Ferocity (Half-orc)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/wild-ferocity-half-orc/",
-      "category": "Race"
+      "category": "Hunter"
     },
     {
       "name": "Wild Shadow (Halfling)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/wild-shadow-halfling/",
-      "category": "Race"
+      "category": "Hunter"
     },
     {
       "name": "Wild Stride (Elf)",
       "url": "https://www.d20pfsrd.com/traits/race-traits/wild-stride-elf/",
-      "category": "Race"
+      "category": "Hunter"
     },
     {
       "name": "Wind-Carried Voices (Sylph)",
@@ -4123,12 +4118,12 @@
     {
       "name": "Blood Steed",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/blood-steed/",
-      "category": "Regional"
+      "category": "Animal"
     },
     {
       "name": "Born Rider",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/bloodrider-regional/",
-      "category": "Regional"
+      "category": "Animal"
     },
     {
       "name": "Born under the Green Star",
@@ -4138,7 +4133,7 @@
     {
       "name": "Bounty Hunter",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/bounty-hunter-regional/",
-      "category": "Regional"
+      "category": "Hunter"
     },
     {
       "name": "Brave",
@@ -4303,7 +4298,7 @@
     {
       "name": "Footsteps of the North (Regional)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/footsteps-of-the-north-regional/",
-      "category": "Regional"
+      "category": "Nature"
     },
     {
       "name": "Free People (Regional)",
@@ -4373,7 +4368,7 @@
     {
       "name": "Hobgoblin Slayer",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/hobgoblin-slayer/",
-      "category": "Regional"
+      "category": "Hunter"
     },
     {
       "name": "Holy Tattoo",
@@ -4398,7 +4393,7 @@
     {
       "name": "Instigator of Rebellion",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/instigator-of-rebellion-minkai/",
-      "category": "Regional"
+      "category": "Nobility"
     },
     {
       "name": "Iron Mind",
@@ -4428,7 +4423,7 @@
     {
       "name": "Lightning Rider",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/rider-of-paresh-regional-qadira/",
-      "category": "Regional"
+      "category": "Animal"
     },
     {
       "name": "Liquid Healing (Regional)",
@@ -4573,7 +4568,7 @@
     {
       "name": "Regional Influence",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/regional-influence-varisia/",
-      "category": "Regional"
+      "category": "Nobility"
     },
     {
       "name": "Regional Recluse",
@@ -4623,7 +4618,7 @@
     {
       "name": "Slayer of the Deep",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/slayer-of-the-deep/",
-      "category": "Regional"
+      "category": "Hunter"
     },
     {
       "name": "Snake Bleeder",
@@ -4653,7 +4648,7 @@
     {
       "name": "Storm Hunter",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/storm-hunter-hongal/",
-      "category": "Regional"
+      "category": "Nature"
     },
     {
       "name": "Storm Pilot",
@@ -4898,7 +4893,7 @@
     {
       "name": "Dragonslayer",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/dragonslayer/",
-      "category": "Religion"
+      "category": "Hunter"
     },
     {
       "name": "Ear for Music",
@@ -4953,7 +4948,7 @@
     {
       "name": "Favored Prey",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/favored-prey/",
-      "category": "Religion"
+      "category": "Hunter"
     },
     {
       "name": "Fiendish Confidence",
@@ -5183,7 +5178,7 @@
     {
       "name": "Rejected Emperor",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/rejected-emperor-religion-trait/",
-      "category": "Religion"
+      "category": "Nobility"
     },
     {
       "name": "Resigned",
@@ -5203,7 +5198,7 @@
     {
       "name": "Sacred Avenger",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/sacred-avenger/",
-      "category": "Religion"
+      "category": "Hunter"
     },
     {
       "name": "Sacred Orienteer",
@@ -5638,7 +5633,7 @@
     {
       "name": "Bastard",
       "url": "https://www.d20pfsrd.com/traits/social-traits/bastard/",
-      "category": "Social"
+      "category": "Nobility"
     },
     {
       "name": "Bruising Intellect",
@@ -5713,7 +5708,7 @@
     {
       "name": "Dragon-Hunted",
       "url": "https://www.d20pfsrd.com/traits/social-traits/dragon-hunted-social/",
-      "category": "Social"
+      "category": "Hunter"
     },
     {
       "name": "Drake Anatomist",
@@ -5783,12 +5778,12 @@
     {
       "name": "Inexorable Authority",
       "url": "https://www.d20pfsrd.com/traits/social-traits/inexorable-authority-social/",
-      "category": "Social"
+      "category": "Nobility"
     },
     {
       "name": "Influence",
       "url": "https://www.d20pfsrd.com/traits/social-traits/influence/",
-      "category": "Social"
+      "category": "Nobility"
     },
     {
       "name": "Keen Ear",
@@ -5798,12 +5793,12 @@
     {
       "name": "King in Waiting",
       "url": "https://www.d20pfsrd.com/traits/social-traits/king-in-waiting-social/",
-      "category": "Social"
+      "category": "Nobility"
     },
     {
       "name": "Knowing the Enemy",
       "url": "https://www.d20pfsrd.com/traits/social-traits/knowing-the-enemy/",
-      "category": "Social"
+      "category": "Hunter"
     },
     {
       "name": "Life of Toil",
@@ -6018,7 +6013,7 @@
     {
       "name": "Beast Bond",
       "url": "https://www.d20pfsrd.com/traits/social-traits/beast-bond/",
-      "category": "Tactic"
+      "category": "Social"
     },
     {
       "name": "Black Eagle Recruit",
@@ -6063,7 +6058,7 @@
     {
       "name": "Dedicated Defender",
       "url": "https://www.d20pfsrd.com/traits/combat-traits/dedicated-defender/",
-      "category": "Tactic"
+      "category": "Animal"
     },
     {
       "name": "Defensive Strategist",
@@ -6148,7 +6143,7 @@
     {
       "name": "Perpetual Companion",
       "url": "https://www.d20pfsrd.com/traits/faith-traits/perpetual-companion/",
-      "category": "Tactic"
+      "category": "Animal"
     },
     {
       "name": "Purchased Loyalty",
@@ -6163,7 +6158,7 @@
     {
       "name": "Rebel Leader",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/rebel-leader-shokuro/",
-      "category": "Tactic"
+      "category": "Nobility"
     },
     {
       "name": "Self-Sacrifice",
@@ -6243,7 +6238,7 @@
     {
       "name": "Bandit (River Kingdoms)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/bandit-regional-river-kingdoms/",
-      "category": "Underworld"
+      "category": "Regional"
     },
     {
       "name": "Blade of the Society (Rogue, Society)",
@@ -6253,7 +6248,7 @@
     {
       "name": "Briar Bandit (Forest)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/briar-bandit-forest/",
-      "category": "Nature"
+      "category": "Regional"
     },
     {
       "name": "Brigand",
@@ -6413,7 +6408,7 @@
     {
       "name": "River Rat (Marsh or River)",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/river-rat/",
-      "category": "Underworld"
+      "category": "Regional"
     },
     {
       "name": "Runaway Slave",
@@ -6473,7 +6468,7 @@
     {
       "name": "Advocate for the Empire",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/advocate-for-the-empire-regional/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Alabaster Odalisque",
@@ -6483,12 +6478,12 @@
     {
       "name": "Altruistic Diplomat",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/altruistic-diplomat/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Ambassador",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/ambassador-sun-goddess/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Ancestral Armor",
@@ -6553,7 +6548,7 @@
     {
       "name": "Destined Diplomat",
       "url": "https://www.d20pfsrd.com/traits/social-traits/destined-diplomat/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Destined For Greatness (Large City)",
@@ -6568,7 +6563,7 @@
     {
       "name": "Diplomat",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/jungle-diplomat-the-valashmai-jungle/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Dusk Dancer",
@@ -6578,7 +6573,7 @@
     {
       "name": "Emissary",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/emissary-kaer-maga/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Eyes and Ears of the City",
@@ -6598,7 +6593,7 @@
     {
       "name": "Friends in High Places",
       "url": "https://www.d20pfsrd.com/traits/social-traits/friends-in-high-places/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Great Market Merchant",
@@ -6613,7 +6608,7 @@
     {
       "name": "Imposing Scion",
       "url": "https://www.d20pfsrd.com/traits/social-traits/imposing-scion/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Law Enforcer",
@@ -6623,7 +6618,7 @@
     {
       "name": "Lesser Noble",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/ustalavic-noble-regional-ustalav/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Long Jumper",
@@ -6633,7 +6628,7 @@
     {
       "name": "Lost Nobility",
       "url": "https://www.d20pfsrd.com/traits/social-traits/lost-nobility/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Martial Performer",
@@ -6658,17 +6653,17 @@
     {
       "name": "Noble",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/noble-regional/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Noble Born",
       "url": "https://www.d20pfsrd.com/traits/campaign-traits/kingmaker/noble-born/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Noble-in-Exile",
       "url": "https://www.d20pfsrd.com/traits/regional-traits/noble-in-exile/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Pomp and Pageantry",
@@ -6678,17 +6673,17 @@
     {
       "name": "Prince/Princess",
       "url": "https://www.d20pfsrd.com/traits/social-traits/princess-female/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Regal Presence",
       "url": "https://www.d20pfsrd.com/traits/religion-traits/regal-presence/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Rich Parents",
       "url": "https://www.d20pfsrd.com/traits/social-traits/rich-parents/",
-      "category": "Urban"
+      "category": "Nobility"
     },
     {
       "name": "Sophisticated Citizen (Regional)",

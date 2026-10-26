@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 load_dotenv(Path(__file__).parent / ".env")
 
-TOKEN = os.getenv("DISCORD_TOKEN_TEST")
+TOKEN = os.getenv("DISCORD_TOKEN")
 PREFIXES: List[str] = ["!mineria ", "!m ", "!"]
 
 class MineriaBot(commands.Bot):
@@ -35,6 +35,7 @@ class MineriaBot(commands.Bot):
             max_messages=50,
             member_cache_flags=discord.MemberCacheFlags.from_intents(intents)
         )
+        self._synced: bool = False
 
     async def setup_hook(self) -> None:
         extensions: List[str] = [
@@ -64,9 +65,10 @@ class MineriaBot(commands.Bot):
             logger.info(f"Loaded {len(loaded_extensions)} extensions: {', '.join(loaded_extensions)}")
 
         # Only sync globally if application_id is established
-        if self.application_id:
+        if not self._synced and self.application_id:
             try:
                 synced = await self.tree.sync()
+                self._synced = True
                 logger.info(f"Synchronized {len(synced)} application (slash) commands globally.")
             except Exception as exc:
                 logger.error(f"Error syncing application commands: {exc}")
@@ -83,10 +85,10 @@ class MineriaBot(commands.Bot):
         await super().close()
 
     async def on_ready(self) -> None:
-        # If application_id was set upon login, perform synchronization if not already done
-        if not self.application_id and self.user:
+        if not self._synced:
             try:
                 synced = await self.tree.sync()
+                self._synced = True
                 logger.info(f"Synchronized {len(synced)} application commands globally in on_ready.")
             except Exception as exc:
                 logger.error(f"Error syncing application commands in on_ready: {exc}")
