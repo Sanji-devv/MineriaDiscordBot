@@ -649,7 +649,7 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                         options = ", ".join(f"**{c['raw_name']}**" for c in candidates[:5])
                         await ctx.send(f"Character **{char_name}** not found. Did you mean: {options}?")
                     else:
-                        await ctx.send(f"Character **{char_name}** not found in XP sheet.")
+                        await ctx.send(f"Character **{char_name}** does not exist in the active character list.")
                     return
 
                 full_xp = matched_char["full_xp"]
@@ -696,10 +696,13 @@ class OneTimeCommands(commands.Cog, name="Utility"):
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout during {title} command for '{char_name}'")
                 await ctx.send("Request timed out.")
+            except (ConnectionError, OSError):
+                logger.warning(f"Connection reset during {title} command for '{char_name}'", exc_info=True)
+                await ctx.send("Unable to retrieve character data due to a connection error. Please try again.")
             except aiohttp.ClientError as exc:
                 err_text = str(exc).strip() or type(exc).__name__
                 logger.error(f"ClientError during {title} command: {err_text}", exc_info=True)
-                await ctx.send(f"Network error: {err_text}")
+                await ctx.send("Unable to retrieve character data due to a network error. Please try again.")
             except Exception as exc:
                 logger.error(f"Error during {title} command: {exc}", exc_info=True)
                 err_text = str(exc).strip() or f"{type(exc).__name__}"
