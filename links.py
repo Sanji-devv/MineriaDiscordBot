@@ -9,26 +9,26 @@ class Links(commands.Cog, name="Links"):
 
     def _build_wiki_embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title="Mineria Wiki Links",
-            description="Official reference resources and guides for the Mineria RPG Campaign.",
+            title="Mineria Wiki & Guides",
+            description="Official campaign references and character creation resources.",
             color=discord.Color.gold()
         )
 
         embed.add_field(
-            name="Wiki Homepage",
-            value="[Mineria Wiki](https://mineria.fandom.com/tr/wiki/Mineria_Wiki)",
+            name="CAMPAIGN WIKI",
+            value="[Open Mineria Wiki](https://mineria.fandom.com/tr/wiki/Mineria_Wiki)",
             inline=False
         )
 
         embed.add_field(
-            name="Character Page Guide",
-            value="[Character Sheet Template](https://mineria.fandom.com/tr/wiki/TaslakKarakterKagidi?so=search)",
+            name="CHARACTER SHEET",
+            value="[Open Character Sheet Template](https://mineria.fandom.com/tr/wiki/TaslakKarakterKagidi?so=search)",
             inline=False
         )
 
         embed.add_field(
-            name="Character Creation",
-            value="[Guide: Character Creation](https://mineria.fandom.com/tr/wiki/Karakter_yaratmak)",
+            name="CHARACTER CREATION",
+            value="[Open Character Creation Guide](https://mineria.fandom.com/tr/wiki/Karakter_yaratmak)",
             inline=False
         )
 

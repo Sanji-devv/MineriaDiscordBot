@@ -56,8 +56,8 @@ class Drawbacks(commands.Cog, name="Drawbacks"):
         desc_text = f"**[{name}]({url})**" if url else f"**{name}**"
 
         embed = discord.Embed(
-            title="Random Character Drawback",
-            description=desc_text,
+            title="Character Drawback",
+            description=f"Randomly selected for your character:\n\n{desc_text}",
             color=discord.Color.dark_red()
         )
 

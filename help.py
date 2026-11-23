@@ -47,23 +47,9 @@ class HelpCog(commands.Cog, name="Help"):
         self, user: discord.User | discord.Member, is_admin: bool = False
     ) -> discord.Embed:
         embed = discord.Embed(
-            title="\U0001f5fa\ufe0f  Mineria Command Hub",
+            title="Mineria Command Hub",
             description=(
                 "**Mineria Campaign Assistant** \u2014 Pathfinder 1e interactive command terminal.\n\n"
-                "__**How to use helper commands**__\n"
-                "```\n"
-                "Typing just  !m            Opens this Command Hub overview\n"
-                "             !m <topic>    Opens a detailed guide for that topic\n"
-                "             !help         Same as !m (direct alias)\n"
-                "             !mineria      Same as !m (full-name alias)\n"
-                "             /help [topic] Slash command with autocomplete\n"
-                "```\n"
-                "__**Available topics**__\n"
-                "`char` \u2014 Character creation & roster\n"
-                "`core` \u2014 Dice roller & drawbacks\n"
-                "`trait` \u2014 Trait drawing system\n"
-                "`doc` \u2014 PDFs, maps & resources\n"
-                "`admin` \u2014 Admin controls *(authorized only)*\n\n"
                 "*Example: type* `!m char` *or* `/help char` *to open the Character guide.*"
             ),
             color=COLOR_TERMINAL,
@@ -73,7 +59,7 @@ class HelpCog(commands.Cog, name="Help"):
             embed.set_thumbnail(url=user.display_avatar.url)
 
         embed.add_field(
-            name="\u2694\ufe0f  CORE MECHANICS",
+            name="CORE MECHANICS",
             value=(
                 "\u2022 `!roll <expr>` \u2014 Polyhedral dice roller *(e.g. `4d6kh3`, `1d20+7`)*\n"
                 "\u2022 `!trait [categories]` \u2014 Draw 3 traits, reroll within 24 h\n"
@@ -84,7 +70,7 @@ class HelpCog(commands.Cog, name="Help"):
         )
 
         embed.add_field(
-            name="\ud83d\udcdc  CHARACTER ENGINE",
+            name="CHARACTER ENGINE",
             value=(
                 "\u2022 `!char create <race>` \u2014 Launch creation wizard\n"
                 "\u2022 `!char dr <stats>` \u2014 Distribute points across 6 attributes\n"
@@ -96,20 +82,36 @@ class HelpCog(commands.Cog, name="Help"):
         )
 
         embed.add_field(
-            name="\ud83c\udf3f  TRAIT SYSTEM",
+            name="TRAIT CATEGORIES",
+            value="All 22 categories, organized for quick scanning:",
+            inline=False,
+        )
+
+        trait_category_groups = [
+            ("CATEGORIES 01", ["Combat", "Magic", "Faith", "Social", "Race", "Tactic", "Craft", "Underworld"]),
+            ("CATEGORIES 02", ["Scholar", "Hunter", "Nature", "Regional", "Religion", "Plane", "Campaign"]),
+            ("CATEGORIES 03", ["Equipment", "Family", "Nobility", "Mount", "Animal", "Occult", "Urban"]),
+        ]
+        for field_name, categories in trait_category_groups:
+            embed.add_field(
+                name=field_name,
+                value="\n".join(f"\u2022 `{category}`" for category in categories),
+                inline=True,
+            )
+
+        embed.add_field(
+            name="DRAW & BROWSE",
             value=(
-                "Draw traits by category: Combat, Magic, Faith, Social, Race, Tactic,\n"
-                "Craft, Underworld, Scholar, Hunter, Nature, Regional, Religion, Plane,\n"
-                "Campaign, Equipment, Family, Nobility, Mount, Animal, Occult, Urban\n"
                 "\u2022 `!trait hunter nature animal` \u2014 Draw from chosen categories\n"
-                "\u2022 `!trait random 3` \u2014 3 traits from random distinct categories\n"
+                "\u2022 `!trait random 3` \u2014 Draw 3 from random distinct categories\n"
+                "\u2022 `!trait <category> all` \u2014 Browse every trait in a category\n"
                 "*\u2192 Details: `!m trait` or `/help trait`*"
             ),
             inline=False,
         )
 
         embed.add_field(
-            name="\ud83d\udcda  RESOURCES & PROGRESSION",
+            name="RESOURCES & PROGRESSION",
             value=(
                 "\u2022 `!doc / !map [name]` \u2014 Campaign PDFs & battlemaps\n"
                 "\u2022 `!wiki` \u2014 Official wiki links and creation guides\n"
@@ -121,7 +123,7 @@ class HelpCog(commands.Cog, name="Help"):
 
         if is_admin:
             embed.add_field(
-                name="\ud83d\udee1\ufe0f  ADMINISTRATIVE SUITE",
+                name="ADMINISTRATIVE SUITE",
                 value=(
                     "\u2022 `!admin disable <cmd|all>` \u2014 Restrict command globally\n"
                     "\u2022 `!admin enable <cmd|all>` \u2014 Re-enable command globally\n"

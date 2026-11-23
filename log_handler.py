@@ -10,15 +10,16 @@ def setup_logging() -> logging.Logger:
     logger_instance.setLevel(logging.INFO)
 
     if not logger_instance.handlers:
+        log_format = "%(asctime)s | %(levelname)-8s | %(message)s"
         file_handler = logging.FileHandler(log_dir / "mineria.log", encoding="utf-8")
         file_handler.setFormatter(
-            logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+            logging.Formatter(log_format, datefmt="%Y-%m-%d %H:%M:%S")
         )
         logger_instance.addHandler(file_handler)
 
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(
-            logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+            logging.Formatter(log_format, datefmt="%H:%M:%S")
         )
         logger_instance.addHandler(console_handler)
 

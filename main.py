@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 load_dotenv(Path(__file__).parent / ".env")
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN_TEST")
 PREFIXES: List[str] = ["!mineria ", "!m ", "!"]
 
 class MineriaBot(commands.Bot):

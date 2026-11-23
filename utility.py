@@ -428,15 +428,11 @@ class OneTimeCommands(commands.Cog, name="Utility"):
 
         if not player_query or not player_query.strip():
             embed = discord.Embed(
-                title="GM Player Query Terminal",
+                title="GM Player Lookup",
                 description=(
-                    "Queries the Player XP Tracker and Mission Reports to list all active and archived characters and GM sessions for a player.\n\n"
-                    "**Usage:** `!gm <player's full name>`\n"
-                    "**Example:** `!gm John Doe`\n\n"
-                    "**Scanned Data:**\n"
-                    "• **Active Characters:** Columns B (Character) & C (Player)\n"
-                    "• **Archived Characters:** Columns P (Character) & Q (Player)\n"
-                    "• **GM Sessions:** Mission Reports AM (GM) Column"
+                    "View a player's active and archived characters, tracked XP, and GM sessions.\n\n"
+                    "Usage: `!gm <player name>`\n"
+                    "Example: `!gm John Doe`"
                 ),
                 color=discord.Color.gold()
             )
@@ -485,14 +481,14 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                 if len(candidates) > 15:
                     cand_list += f"\n*...and {len(candidates) - 15} more player(s).*"
                 embed = discord.Embed(
-                    title=f"Multiple Players Found ({len(candidates)})",
+                    title="Matching Players",
                     description=(
-                        f"Players matching **'{raw_query}'**:\n\n"
-                        f"{cand_list}\n\n"
-                        f"Please try again using the player's full name:\n`!gm <player's full name>`"
+                        f"{len(candidates)} players match **{raw_query}**. "
+                        "Try again with the player's full name."
                     ),
                     color=discord.Color.orange()
                 )
+                embed.add_field(name="PLAYER MATCHES", value=cand_list, inline=False)
                 if avatar_url:
                     embed.set_footer(text="Mineria RPG • GM Player Tracker", icon_url=avatar_url)
                 await ctx.send(embed=embed)
@@ -530,12 +526,12 @@ class OneTimeCommands(commands.Cog, name="Utility"):
             close_matches = difflib.get_close_matches(query_norm, self._cache_player_keys, n=4, cutoff=0.5)
             embed = discord.Embed(
                 title="Player Not Found",
-                description=f"No record found for **{raw_query}** on the Player XP Tracker.",
+                description=f"No player record found for **{raw_query}**.",
                 color=discord.Color.red()
             )
             if close_matches:
                 sug_list = "\n".join([f"• `!gm {self._cache_players[c]}`" for c in close_matches])
-                embed.add_field(name="Did you mean:", value=sug_list, inline=False)
+                embed.add_field(name="SIMILAR PLAYERS", value=sug_list, inline=False)
             if avatar_url:
                 embed.set_footer(text="Mineria RPG • GM Player Tracker", icon_url=avatar_url)
             await ctx.send(embed=embed)
@@ -577,19 +573,17 @@ class OneTimeCommands(commands.Cog, name="Utility"):
         gm_breakdown.sort(key=lambda x: x["count"], reverse=True)
 
         embed = discord.Embed(
-            title=f"GM Player Profile: {target_player}",
+            title=f"GM History | {target_player}",
+            description=match_note or "Player activity from the campaign records.",
             color=discord.Color.gold()
         )
-
-        desc_lines = []
-        if match_note:
-            desc_lines.append(match_note)
-
-        desc_lines.extend([
-            f"**Player:** `{target_player}`",
-            f"**Total GM Sessions:** **{total_gm_count} Session(s)**",
-            f"**Total Characters:** **{total_chars}** ({len(active_list)} Active • {len(graveyard_list)} Archived)",
-        ])
+        embed.add_field(name="GM SESSIONS", value=f"**{total_gm_count}**", inline=True)
+        embed.add_field(
+            name="CHARACTERS",
+            value=f"**{total_chars}**\n{len(active_list)} active · {len(graveyard_list)} archived",
+            inline=True,
+        )
+        embed.add_field(name="TRACKED XP", value=f"**{total_xp:,.0f} XP**", inline=True)
 
         if graveyard_list:
             gy_parts = []
@@ -602,22 +596,30 @@ class OneTimeCommands(commands.Cog, name="Utility"):
             if other_count:
                 gy_parts.append(f"{other_count} Other")
             if gy_parts:
-                desc_lines.append(f"**Archived Status:** {', '.join(gy_parts)}")
-
-        desc_lines.append("──────────────────────────────")
+                embed.add_field(name="ARCHIVED STATUS", value=" · ".join(gy_parts), inline=False)
 
         if gm_breakdown:
-            desc_lines.append(f"**GM Session History ({len(gm_breakdown)})**")
-            for g in gm_breakdown:
-                desc_lines.append(f"• **{g['char_name']}**: **{g['count']}** GM Session(s) *({g['status_label']})*")
+            history_lines = []
+            history_length = 0
+            for idx, g in enumerate(gm_breakdown):
+                line = f"**{g['char_name']}** · {g['count']} sessions · {g['status_label']}"
+                if history_length + len(line) + (1 if history_lines else 0) > 950:
+                    remaining = len(gm_breakdown) - idx
+                    history_lines.append(f"*...and {remaining} more records.*")
+                    break
+                history_lines.append(line)
+                history_length += len(line) + (1 if history_length else 0)
 
             other_chars_count = total_chars - len(gm_breakdown)
+            history_text = "\n".join(history_lines)
             if other_chars_count > 0:
-                desc_lines.append(f"\n*{other_chars_count} other character(s) have no recorded GM sessions.*")
+                note = f"*{other_chars_count} other characters have no recorded GM sessions.*"
+                if len(history_text) + len(note) + 1 <= 1024:
+                    history_lines.append(note)
+                    history_text = "\n".join(history_lines)
         else:
-            desc_lines.append("**GM History:** *No recorded GM sessions found.*")
-
-        embed.description = "\n".join(desc_lines)
+            history_text = "No recorded GM sessions found."
+        embed.add_field(name=f"GM SESSION HISTORY ({len(gm_breakdown)})", value=history_text, inline=False)
 
         if avatar_url:
             embed.set_footer(text="Mineria RPG • Player XP Tracker", icon_url=avatar_url)
@@ -662,28 +664,32 @@ class OneTimeCommands(commands.Cog, name="Utility"):
                 pct = int(multiplier * 100)
 
                 base_title = title.replace(" Calculation", "").strip()
-                embed_title = f"{base_title} • {display_name}"
+                embed_title = f"{base_title} | {display_name}"
 
-                embed = discord.Embed(title=embed_title, color=color)
+                embed = discord.Embed(
+                    title=embed_title,
+                    description=f"Starting XP includes {pct}% of Task XP.",
+                    color=color
+                )
 
-                embed.add_field(name="Base XP", value=f"{full_xp:,.0f} XP", inline=True)
+                embed.add_field(name="Base XP", value=f"**{full_xp:,.0f} XP**", inline=True)
                 embed.add_field(
-                    name=f"Added XP ({pct}%)",
-                    value=f"{added_xp:,.0f} XP\n*(from {task_xp:,.0f} Task XP)*",
+                    name=f"Task XP Bonus ({pct}%)",
+                    value=f"**{added_xp:,.0f} XP**\nBased on {task_xp:,.0f} Task XP",
                     inline=True
                 )
-                embed.add_field(name="Total Starting XP", value=f"**{final_xp:,.0f} XP**", inline=False)
-                embed.add_field(name="Starting Level", value=f"**Level {level}**", inline=True)
+                embed.add_field(name="STARTING XP", value=f"**{final_xp:,.0f} XP**", inline=False)
+                embed.add_field(name="STARTING LEVEL", value=f"**Level {level}**", inline=True)
 
                 if level < 20:
                     next_text = f"**{xp_needed:,.0f} XP** remaining for Level {next_level}."
                 else:
                     next_text = "Max Level reached."
-                embed.add_field(name="Next Level", value=next_text, inline=True)
+                embed.add_field(name="NEXT LEVEL", value=next_text, inline=True)
 
-                footer_text = "Mineria RPG • System"
+                footer_text = "Mineria RPG | Character XP"
                 if normalize_name(char_name) != matched_char["norm_name"]:
-                    footer_text += f" • Matched from '{char_name}'"
+                    footer_text += f" | Matched from '{char_name}'"
 
                 avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
                 if avatar_url:

@@ -234,7 +234,7 @@ class Dice(commands.Cog):
         avatar_url = author.display_avatar.url if author.display_avatar else None
 
         embed = discord.Embed(
-            title=f"{author.display_name} rolled:",
+            title=f"Dice Roll Results | {author.display_name}",
             description=description_text,
             color=discord.Color.gold()
         )

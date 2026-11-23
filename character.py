@@ -18,6 +18,14 @@ if not DATA_DIR.exists():
     DATA_DIR = Path(__file__).parent / "datas"
 _JSON_CACHE: Dict[str, Tuple[float, Any]] = {}
 _STATIC_CACHE: Dict[str, Any] = {}
+STAT_DISPLAY_NAMES = {
+    "STR": "Strength",
+    "DEX": "Dexterity",
+    "CON": "Constitution",
+    "INT": "Intelligence",
+    "WIS": "Wisdom",
+    "CHA": "Charisma",
+}
 
 def _preload_static_cache() -> None:
     for filename in ("races.json", "classes.json", "drawbacks.json"):
@@ -130,7 +138,10 @@ def get_recommendations(stats: Dict[str, int], classes: List[dict]) -> List[dict
 
         recommendations.append({
             "name": cls.get("name", "Unknown"),
-            "score": total_score * variance
+            "score": total_score * variance,
+            "primary_stats": primaries,
+            "secondary_stats": secondaries,
+            "description": cls.get("description", ""),
         })
 
     return sorted(recommendations, key=lambda x: x["score"], reverse=True)[:5]
@@ -140,16 +151,25 @@ def generate_recommendation_embed(
 ) -> discord.Embed:
     embed = discord.Embed(
         title="Class Recommendations",
-        description="Based on your rolled attribute scores, here are the top recommended classes:",
+        description="Based on your ability scores.",
         color=discord.Color.blue(),
     )
     lines = []
     for idx, rec in enumerate(recommendations, start=1):
         name = rec.get("name", "Unknown")
-        lines.append(f"**{idx}.** `{name}`")
+        primary_stats = rec.get("primary_stats", [])
+        primary_values = ", ".join(f"{stat} {stats.get(stat, 10)}" for stat in primary_stats)
+        line = f"**{idx}. {name}**"
+        if primary_values:
+            line += f" \u2014 {primary_values}"
+        lines.append(line)
 
-    embed.add_field(name="Top Matches", value="\n".join(lines) if lines else "No recommendations available.", inline=False)
-    embed.set_footer(text="Assign a class with !char edit class <name> <class> • Toggle with !rec")
+    embed.add_field(
+        name="TOP MATCHES",
+        value="\n".join(lines) if lines else "No class recommendations are available.",
+        inline=False,
+    )
+    embed.set_footer(text="Set class with !char edit class <name> | Toggle with !rec")
     return embed
 
 class InteractionContextAdapter:
@@ -221,9 +241,14 @@ class BonusSelectView(discord.ui.View):
         self.bonus_val = bonus_val
         self.message: Optional[discord.Message] = None
 
-        stats = ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
-        for stat in stats:
-            btn = discord.ui.Button(label=f"+{bonus_val} {stat}", style=discord.ButtonStyle.secondary, custom_id=stat)
+        stats = list(STAT_DISPLAY_NAMES)
+        for index, stat in enumerate(stats):
+            btn = discord.ui.Button(
+                label=f"{STAT_DISPLAY_NAMES[stat]} +{bonus_val}",
+                style=discord.ButtonStyle.primary,
+                custom_id=stat,
+                row=index // 3,
+            )
             btn.callback = self.make_callback(stat)
             self.add_item(btn)
 
@@ -250,6 +275,8 @@ class BonusSelectView(discord.ui.View):
             if stat not in self.creation["stats"]:
                 self.creation["stats"][stat] = 0
             self.creation["stats"][stat] += self.bonus_val
+            self.creation["flexible_bonus_stat"] = stat
+            self.creation["flexible_bonus_value"] = self.bonus_val
 
             for child in self.children:
                 if isinstance(child, discord.ui.Button):
@@ -306,15 +333,10 @@ def generate_stat_embed(
 ) -> discord.Embed:
     author_name = getattr(ctx.author, "display_name", ctx.author.name)
     embed = discord.Embed(
-        title="Stat Roll Results",
-        description=f"Rolled by **{author_name}**\n\u200b\n" + "─" * 35,
+        title=f"{creation['race_name']} Ability Scores",
+        description=f"Rolled by **{author_name}**",
         color=discord.Color.gold()
     )
-
-    details_val = rolls_text
-    if len(details_val) > 1020:
-        details_val = details_val[:1015] + "..."
-    embed.add_field(name="Details", value=details_val, inline=False)
 
     final_stats = creation["stats"]
 
@@ -322,25 +344,41 @@ def generate_stat_embed(
         val = final_stats.get(key, 10)
         mod = (val - 10) // 2
         sign = "+" if mod >= 0 else ""
-        return f"**{label}**: {val} (`{sign}{mod}`)"
+        return f"**{label} · {STAT_DISPLAY_NAMES[label]}**: **{val}** (`{sign}{mod}`)"
 
     col1_list = [fmt_stat_dr("STR", "STR"), fmt_stat_dr("DEX", "DEX"), fmt_stat_dr("CON", "CON")]
     col2_list = [fmt_stat_dr("INT", "INT"), fmt_stat_dr("WIS", "WIS"), fmt_stat_dr("CHA", "CHA")]
 
-    embed.add_field(name="Physical", value="\n".join(col1_list), inline=True)
-    embed.add_field(name="Mental", value="\n".join(col2_list), inline=True)
+    embed.add_field(name="PHYSICAL ABILITIES", value="\n".join(col1_list), inline=True)
+    embed.add_field(name="MENTAL ABILITIES", value="\n".join(col2_list), inline=True)
 
-    plus = creation["race_data"].get("Ability Score Plus", "None")
-    if "modifiers" in creation["race_data"]:
-        mods = creation["race_data"]["modifiers"]
+    race_data = creation.get("race_data", {})
+    plus = race_data.get("Ability Score Plus", "None")
+    if "modifiers" in race_data:
+        mods = race_data["modifiers"]
         mod_strs = [f"{('+' if v > 0 else '')}{v} {k}" for k, v in mods.items()]
-        plus = ", ".join(mod_strs)
+        if mod_strs:
+            plus = ", ".join(mod_strs)
 
-    adj_text = f"**Race**: {creation['race_name']}\n**Mods**: {plus}"
+    race_details = [f"**{creation['race_name']}**"]
+    flexible_bonus = creation.get("flexible_bonus_value", racial_mods.get("ANY", 0))
+    chosen_stat = creation.get("flexible_bonus_stat")
+    has_flexible_bonus = bool(flexible_bonus or chosen_stat)
+    if plus != "None" and not ("one ability" in plus.lower() and has_flexible_bonus):
+        race_details.append(plus)
     if racial_mods.get("ANY"):
-        adj_text += f"\n\n**Flexible Bonus Available!**\nClick a button below to apply +{racial_mods['ANY']}!"
+        race_details.append(f"Flexible +{racial_mods['ANY']}: choose an ability below.")
+    elif chosen_stat:
+        stat_name = STAT_DISPLAY_NAMES.get(chosen_stat, chosen_stat)
+        race_details.append(f"Flexible +{flexible_bonus} applied to {stat_name}.")
 
-    embed.add_field(name="Traits", value=adj_text, inline=False)
+    if creation.get("race_name") != "Standard" or plus != "None" or has_flexible_bonus:
+        embed.add_field(name="RACE BONUS", value="\n".join(race_details), inline=False)
+
+    details_val = rolls_text
+    if len(details_val) > 1020:
+        details_val = details_val[:1015] + "..."
+    embed.add_field(name="ROLL BREAKDOWN", value=details_val, inline=False)
 
     avatar_url = bot.user.display_avatar.url if (bot.user and bot.user.display_avatar) else None
     if avatar_url:
@@ -378,19 +416,49 @@ async def handle_create(cog: Any, ctx: Any, race_name: Optional[str] = None) -> 
     }
 
     author_name = getattr(ctx.author, "display_name", ctx.author.name)
+    race_points = race_data.get("Race Points", 10)
+    ability_bonus = race_data.get("Ability Score Plus", "None")
+    if race_data.get("modifiers"):
+        ability_bonus = ", ".join(
+            f"{'+' if value > 0 else ''}{value} {stat}"
+            for stat, value in race_data["modifiers"].items()
+        )
+
+    flexible_bonus = race_data.get("flexible_stat", 0)
+    if flexible_bonus:
+        if "one ability" in ability_bonus.lower():
+            ability_bonus = f"+{flexible_bonus} to one ability (choose after rolling)"
+        elif ability_bonus == "None":
+            ability_bonus = f"+{flexible_bonus} to an ability of your choice (after rolling)"
+        else:
+            ability_bonus += f" \u00b7 +{flexible_bonus} to a chosen ability"
+    race_profile = f"{race_points} RP\n{ability_bonus}"
+
     embed = discord.Embed(
-        title=f"{target_race} Creation Session Started",
-        description=f"**{author_name}**, your journey begins.",
-        color=discord.Color.gold()
+        title=f"{target_race} Character Creation",
+        description=f"Welcome, **{author_name}**. Assign your dice to begin.",
+        color=discord.Color.from_rgb(230, 126, 34)
     )
-    embed.add_field(name="Dice Points", value=f"**{dice_points}** points available.", inline=True)
+    embed.add_field(name="RACE BONUS", value=race_profile, inline=True)
+    embed.add_field(
+        name="DICE RULES",
+        value=f"**{dice_points} total** \u00b7 3\u201318 per ability\nRoll d6, keep best 3.",
+        inline=True
+    )
 
     avg = dice_points // 6
     rem = dice_points % 6
     ex_parts = [f"{k} {avg + rem if i == 5 else avg}" for i, k in enumerate(["STR", "DEX", "CON", "INT", "WIS", "CHA"])]
     example_cmd = " ".join(ex_parts)
 
-    embed.add_field(name="Next Step", value=f"Distribute using `!char dr`.\nExample: `!char dr {example_cmd}`", inline=False)
+    embed.add_field(
+        name="DISTRIBUTE & SAVE",
+        value=(
+            f"Example: `!char dr {example_cmd}`\n"
+            "Then save: `!char save <name>`."
+        ),
+        inline=False
+    )
 
     if ctx.author.display_avatar:
         embed.set_thumbnail(url=ctx.author.display_avatar.url)

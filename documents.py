@@ -75,11 +75,11 @@ class Documents(commands.Cog, name="Documents"):
             return
 
         embed = discord.Embed(
-            title="Available Campaign Documents",
-            description="Use `!doc <name>` or `/doc` to download a specific document.",
+            title="Campaign Documents",
+            description=f"**{len(doc_entries)} available**\nUse `!doc <name>` or `/doc` to download a document.",
             color=discord.Color.gold()
         )
-        file_list = [f"**{f.name}** ({size:.2f} MB)" for f, size in doc_entries]
+        file_list = [f"**{f.name}** \u00b7 `{size:.2f} MB`" for f, size in doc_entries]
 
         value_text = ""
         for idx, item in enumerate(file_list):
@@ -88,7 +88,7 @@ class Documents(commands.Cog, name="Documents"):
                 break
             value_text += ("\n" if value_text else "") + item
 
-        embed.add_field(name=f"Files ({len(doc_entries)})", value=value_text or "No files.", inline=False)
+        embed.add_field(name="AVAILABLE FILES", value=value_text or "No files.", inline=False)
 
         avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
         if avatar_url:
@@ -161,8 +161,8 @@ class Documents(commands.Cog, name="Documents"):
             return
 
         embed = discord.Embed(
-            title="Available Tactical Battlemaps",
-            description="Use `!map <name>` or `/map` to display a specific map.",
+            title="Tactical Battlemaps",
+            description=f"**{len(maps)} available**\nUse `!map <name>` or `/map` to display a map.",
             color=discord.Color.blue()
         )
         map_list = [f"**{f.stem}**" for f in maps]
@@ -174,7 +174,7 @@ class Documents(commands.Cog, name="Documents"):
                 break
             value_text += ("\n" if value_text else "") + item
 
-        embed.add_field(name=f"Maps ({len(maps)})", value=value_text or "No maps.", inline=False)
+        embed.add_field(name="AVAILABLE MAPS", value=value_text or "No maps.", inline=False)
 
         avatar_url = self.bot.user.display_avatar.url if (self.bot.user and self.bot.user.display_avatar) else None
         if avatar_url:
